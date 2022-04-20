@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/gohornet/hornet/pkg/common"
-	"github.com/gohornet/hornet/pkg/model/utxo"
 	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/syncutils"
@@ -131,7 +130,7 @@ func (s *MigratorService) PersistState(sendingReceipt bool) error {
 // otherwise the state is loaded from file.
 // The optional utxoManager is used to validate the initialized state against the DB.
 // InitState must be called before Start.
-func (s *MigratorService) InitState(msIndex *uint32, utxoManager *utxo.Manager) error {
+func (s *MigratorService) InitState(msIndex *uint32) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -161,17 +160,18 @@ func (s *MigratorService) InitState(msIndex *uint32, utxoManager *utxo.Manager) 
 		return fmt.Errorf("%w: latest migrated at index must not be zero", ErrInvalidState)
 	}
 
-	if utxoManager != nil {
-		highestMigratedAtIndex, err := utxoManager.SearchHighestReceiptMigratedAtIndex()
-		if err != nil {
-			return fmt.Errorf("unable to determine highest migrated at index: %w", err)
-		}
-		// if highestMigratedAtIndex is zero no receipt in the DB, so we cannot do sanity checks
-		if highestMigratedAtIndex > 0 && highestMigratedAtIndex != state.LatestMigratedAtIndex {
-			return fmt.Errorf("state receipt does not match highest receipt in database: state: %d, database: %d",
-				state.LatestMigratedAtIndex, highestMigratedAtIndex)
-		}
-	}
+	//TODO: read this from the latest milestone metadata (https://github.com/gohornet/inx-coordinator/issues/2)
+	//if utxoManager != nil {
+	//	highestMigratedAtIndex, err := utxoManager.SearchHighestReceiptMigratedAtIndex()
+	//	if err != nil {
+	//		return fmt.Errorf("unable to determine highest migrated at index: %w", err)
+	//	}
+	//	// if highestMigratedAtIndex is zero no receipt in the DB, so we cannot do sanity checks
+	//	if highestMigratedAtIndex > 0 && highestMigratedAtIndex != state.LatestMigratedAtIndex {
+	//		return fmt.Errorf("state receipt does not match highest receipt in database: state: %d, database: %d",
+	//			state.LatestMigratedAtIndex, highestMigratedAtIndex)
+	//	}
+	//}
 
 	s.state = state
 	return nil

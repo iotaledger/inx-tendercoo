@@ -10,7 +10,6 @@ import (
 
 	"github.com/gohornet/hornet/pkg/common"
 	validator "github.com/gohornet/hornet/pkg/model/migrator"
-	"github.com/gohornet/hornet/pkg/model/utxo"
 	"github.com/gohornet/hornet/pkg/node"
 	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
@@ -55,7 +54,6 @@ var (
 
 type dependencies struct {
 	dig.In
-	UTXOManager     *utxo.Manager
 	AppConfig       *configuration.Configuration `name:"appConfig"`
 	MigratorService *migrator.MigratorService
 	ShutdownHandler *shutdown.ShutdownHandler
@@ -119,7 +117,7 @@ func configure() {
 		msIndex = startIndex
 	}
 
-	if err := deps.MigratorService.InitState(msIndex, deps.UTXOManager); err != nil {
+	if err := deps.MigratorService.InitState(msIndex); err != nil {
 		Plugin.LogFatalf("failed to initialize migrator: %s", err)
 	}
 }

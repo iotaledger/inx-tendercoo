@@ -101,11 +101,11 @@ func newTestService(t *testing.T, msIndex uint32, maxEntries int) (*migrator.Mig
 
 	if msIndex > 0 {
 		// bootstrap
-		err := s.InitState(&msIndex, nil)
+		err := s.InitState(&msIndex)
 		require.NoError(t, err)
 	} else {
 		// load from state
-		err := s.InitState(nil, nil)
+		err := s.InitState(nil)
 		require.NoError(t, err)
 	}
 
