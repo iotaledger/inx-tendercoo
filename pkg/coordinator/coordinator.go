@@ -57,9 +57,6 @@ var (
 	ErrInvalidSiblingsTrytesLength = errors.New("siblings trytes too long")
 )
 
-// MerkleTreeHash is the merkle tree root hash of all messages.
-type MerkleTreeHash [iotago.MilestoneMerkleProofLength]byte
-
 // Events are the events issued by the coordinator.
 type Events struct {
 	// Fired when a checkpoint message is issued.
@@ -78,19 +75,19 @@ type IsNodeSyncedFunc = func() bool
 // MilestoneMerkleRoots contains the merkle roots calculated by whiteflag confirmation.
 type MilestoneMerkleRoots struct {
 	// ConfirmedMerkleRoot is the root of the merkle tree containing the hash of all confirmed messages.
-	ConfirmedMerkleRoot *MerkleTreeHash
+	ConfirmedMerkleRoot iotago.MilestoneMerkleProof
 	// AppliedMerkleRoot is the root of the merkle tree containing the hash of all include messages that mutate the ledger.
-	AppliedMerkleRoot *MerkleTreeHash
+	AppliedMerkleRoot iotago.MilestoneMerkleProof
 }
 
-type ComputeMerkleTreeHashFunc = func(ctx context.Context, index milestone.Index, timestamp uint32, parents hornet.MessageIDs, lastMilestoneID iotago.MilestoneID) (*MilestoneMerkleRoots, error)
+type ComputeMilestoneMerkleRoots = func(ctx context.Context, index milestone.Index, timestamp uint32, parents hornet.MessageIDs, lastMilestoneID iotago.MilestoneID) (*MilestoneMerkleRoots, error)
 
 // Coordinator is used to issue signed messages, called "milestones" to secure an IOTA network and prevent double spends.
 type Coordinator struct {
 	// the logger used to log events.
 	*utils.WrappedLogger
-
-	merkleTreeHashFunc ComputeMerkleTreeHashFunc
+	// used to compute the merkle roots used inside the milestone payload.
+	merkleRootFunc ComputeMilestoneMerkleRoots
 	// used to issue only one milestone at a time.
 	milestoneLock syncutils.Mutex
 	// used to determine the sync status of the node.
@@ -234,7 +231,7 @@ type Option func(opts *Options)
 
 // New creates a new coordinator instance.
 func New(
-	merkleTreeHashFunc ComputeMerkleTreeHashFunc,
+	merkleRootFunc ComputeMilestoneMerkleRoots,
 	nodeSyncedFunc IsNodeSyncedFunc,
 	networkID uint64,
 	deSeriParas *iotago.DeSerializationParameters,
@@ -254,7 +251,7 @@ func New(
 	}
 
 	result := &Coordinator{
-		merkleTreeHashFunc: merkleTreeHashFunc,
+		merkleRootFunc:     merkleRootFunc,
 		isNodeSynced:       nodeSyncedFunc,
 		networkID:          networkID,
 		deSeriParas:        deSeriParas,
@@ -356,7 +353,7 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 	// compute merkle tree root
 	// we pass a background context here to not cancel the white-flag computation!
 	// otherwise the coordinator could panic at shutdown.
-	merkleProof, err := coo.merkleTreeHashFunc(context.Background(), newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, lastMilestoneID)
+	merkleProof, err := coo.merkleRootFunc(context.Background(), newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, lastMilestoneID)
 	if err != nil {
 		return common.CriticalError(fmt.Errorf("failed to compute white flag mutations: %w", err))
 	}

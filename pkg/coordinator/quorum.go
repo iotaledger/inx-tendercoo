@@ -59,7 +59,7 @@ type QuorumFinishedResult struct {
 
 // quorumGroupEntry holds the api and statistics of a quorum client.
 type quorumGroupEntry struct {
-	api   *DebugNodeAPIClient
+	api   *nodeclient.Client
 	stats *QuorumClientStatistic
 }
 
@@ -94,7 +94,7 @@ func newQuorum(quorumGroups map[string][]*QuorumClientConfig, timeout time.Durat
 			}
 
 			groups[groupName][i] = &quorumGroupEntry{
-				api: NewDebugNodeAPIClient(client.BaseURL,
+				api: nodeclient.New(client.BaseURL,
 					nodeclient.WithHTTPClient(&http.Client{Timeout: timeout}),
 					nodeclient.WithUserInfo(userInfo),
 				),
@@ -137,14 +137,14 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 
 	// create buffered channels, so the go routines will not be dangling if no receiver waits for the results anymore
 	// garbage collector will take care if the channels are not used anymore. no need to close manually
-	nodeResultChan := make(chan *MilestoneMerkleRoots, len(quorumGroupEntries))
+	nodeResultChan := make(chan *nodeclient.ComputeWhiteFlagMutationsResponse, len(quorumGroupEntries))
 	nodeErrorChan := make(chan error, len(quorumGroupEntries))
 
 	for _, entry := range quorumGroupEntries {
-		go func(entry *quorumGroupEntry, nodeResultChan chan *MilestoneMerkleRoots, nodeErrorChan chan error) {
+		go func(entry *quorumGroupEntry, nodeResultChan chan *nodeclient.ComputeWhiteFlagMutationsResponse, nodeErrorChan chan error) {
 			ts := time.Now()
 
-			nodeMerkleTreeHash, err := entry.api.WhiteFlag(index, timestamp, parents, lastMilestoneID)
+			response, err := entry.api.ComputeWhiteFlagMutations(ctx, uint32(index), timestamp, parents.ToSliceOfArrays(), lastMilestoneID)
 
 			// set the stats for the node
 			entry.stats.ResponseTimeSeconds = time.Since(ts).Seconds()
@@ -157,7 +157,7 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 				nodeErrorChan <- err
 				return
 			}
-			nodeResultChan <- nodeMerkleTreeHash
+			nodeResultChan <- response
 		}(entry, nodeResultChan, nodeErrorChan)
 	}
 
@@ -174,9 +174,9 @@ QuorumLoop:
 			// ignore errors of single nodes
 			continue
 
-		case nodeMerkleTreeHash := <-nodeResultChan:
-			if cooMerkleProof.AppliedMerkleRoot != nodeMerkleTreeHash.AppliedMerkleRoot ||
-				cooMerkleProof.ConfirmedMerkleRoot != nodeMerkleTreeHash.ConfirmedMerkleRoot {
+		case nodeWhiteFlagResponse := <-nodeResultChan:
+			if cooMerkleProof.AppliedMerkleRoot != nodeWhiteFlagResponse.AppliedMerkleRoot ||
+				cooMerkleProof.ConfirmedMerkleRoot != nodeWhiteFlagResponse.ConfirmedMerkleRoot {
 				// mismatch of the merkle tree hash of the node => critical error
 				quorumErrChan <- common.CriticalError(ErrQuorumMerkleTreeHashMismatch)
 				return

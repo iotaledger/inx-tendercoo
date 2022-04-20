@@ -15,7 +15,7 @@ import (
 
 var (
 	// Version of the app.
-	Version = "0.1.0"
+	Version = "0.1.1"
 
 	// configs
 	appConfig = configuration.New()

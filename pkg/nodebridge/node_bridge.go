@@ -165,8 +165,8 @@ func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex mileston
 	}
 
 	proof := &coordinator.MilestoneMerkleRoots{
-		ConfirmedMerkleRoot: &coordinator.MerkleTreeHash{},
-		AppliedMerkleRoot:   &coordinator.MerkleTreeHash{},
+		ConfirmedMerkleRoot: iotago.MilestoneMerkleProof{},
+		AppliedMerkleRoot:   iotago.MilestoneMerkleProof{},
 	}
 	copy(proof.ConfirmedMerkleRoot[:], res.GetMilestoneConfirmedMerkleRoot())
 	copy(proof.AppliedMerkleRoot[:], res.GetMilestoneAppliedMerkleRoot())
