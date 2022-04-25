@@ -102,7 +102,7 @@ type Coordinator struct {
 	treasuryOutputFunc UnspentTreasuryOutputFunc
 	// used to sign the milestones.
 	signerProvider MilestoneSignerProvider
-	// used to do the PoW for the coordinator messages.
+	// used to do the PoW for the checkpoint messages.
 	powHandler *pow.Handler
 	// the function used to send a message.
 	sendMessageFunc SendMessageFunc
