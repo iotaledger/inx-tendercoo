@@ -65,11 +65,8 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 		return nil, err
 	}
 
-	// we pass a background context here to not create invalid milestones at node shutdown.
-	// otherwise the coordinator could panic at shutdown.
-	if err := coo.powHandler.DoPoW(context.Background(), iotaMsg, coo.opts.powWorkerCount); err != nil {
-		return nil, err
-	}
+	// enforce milestone msg nonce == 0
+	iotaMsg.Nonce = 0
 
 	// Perform validation
 	if _, err := iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas); err != nil {
