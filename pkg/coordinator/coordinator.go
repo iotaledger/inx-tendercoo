@@ -90,10 +90,8 @@ type Coordinator struct {
 	milestoneLock syncutils.Mutex
 	// used to determine the sync status of the node.
 	isNodeSynced IsNodeSyncedFunc
-	// id of the network the coordinator is running in.
-	networkID uint64
-	// Deserialization parameters including byte costs
-	deSeriParas *iotago.DeSerializationParameters
+	// Protocol parameters including byte costs
+	protoParas *iotago.ProtocolParameters
 	// used to get receipts for the WOTS migration.
 	migratorService *migrator.MigratorService
 	// used to get the treasury output.
@@ -209,8 +207,7 @@ type Option func(opts *Options)
 func New(
 	merkleRootFunc ComputeMilestoneMerkleRoots,
 	nodeSyncedFunc IsNodeSyncedFunc,
-	networkID uint64,
-	deSeriParas *iotago.DeSerializationParameters,
+	protoParas *iotago.ProtocolParameters,
 	signerProvider MilestoneSignerProvider,
 	migratorService *migrator.MigratorService,
 	treasuryOutputFunc UnspentTreasuryOutputFunc,
@@ -228,8 +225,7 @@ func New(
 	result := &Coordinator{
 		merkleRootFunc:     merkleRootFunc,
 		isNodeSynced:       nodeSyncedFunc,
-		networkID:          networkID,
-		deSeriParas:        deSeriParas,
+		protoParas:         protoParas,
 		signerProvider:     signerProvider,
 		migratorService:    migratorService,
 		treasuryOutputFunc: treasuryOutputFunc,

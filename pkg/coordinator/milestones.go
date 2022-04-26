@@ -14,7 +14,7 @@ import (
 func (coo *Coordinator) createCheckpoint(parents hornet.MessageIDs) (*iotago.Message, error) {
 
 	iotaMsg, err := builder.
-		NewMessageBuilder().
+		NewMessageBuilder(coo.protoParas.Version).
 		Parents(parents.ToSliceOfSlices()).
 		Build()
 	if err != nil {
@@ -22,7 +22,7 @@ func (coo *Coordinator) createCheckpoint(parents hornet.MessageIDs) (*iotago.Mes
 	}
 
 	// Validate
-	_, err = iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas)
+	_, err = iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.protoParas)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 	}
 
 	iotaMsg, err := builder.
-		NewMessageBuilder().
+		NewMessageBuilder(coo.protoParas.Version).
 		ParentsMessageIDs(parentsSliceOfArray).
 		Payload(msPayload).
 		Build()
@@ -68,7 +68,7 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 	}
 
 	// Perform validation
-	if _, err := iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas); err != nil {
+	if _, err := iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.protoParas); err != nil {
 		return nil, err
 	}
 

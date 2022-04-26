@@ -149,8 +149,7 @@ func provide(c *dig.Container) {
 			coo, err := coordinator.New(
 				deps.NodeBridge.ComputeMerkleTreeHash,
 				deps.NodeBridge.IsNodeSynced,
-				iotago.NetworkIDFromString(deps.NodeBridge.ProtocolParameters.GetNetworkName()),
-				deps.NodeBridge.DeserializationParameters(),
+				deps.NodeBridge.NodeConfig.UnwrapProtocolParameters(),
 				signingProvider,
 				deps.MigratorService,
 				deps.NodeBridge.LatestTreasuryOutput,
@@ -440,18 +439,16 @@ func sendMessage(message *iotago.Message, msIndex ...milestone.Index) (hornet.Me
 	var milestoneConfirmedEventChan chan struct{}
 
 	if len(msIndex) > 0 {
-		milestoneConfirmedEventChan = deps.NodeBridge.RegisterMilestoneConfirmedEvent(context.Background(), msIndex[0])
-	}
-
-	defer func() {
-		if err != nil {
-			if len(msIndex) > 0 {
+		milestoneConfirmedEventChan = deps.NodeBridge.RegisterMilestoneConfirmedEvent(msIndex[0])
+		defer func() {
+			if err != nil {
 				deps.NodeBridge.DeregisterMilestoneConfirmedEvent(msIndex[0])
 			}
-		}
-	}()
+		}()
+	}
 
-	messageID, err := deps.NodeBridge.EmitMessage(CorePlugin.Daemon().ContextStopped(), message)
+	var messageID iotago.MessageID
+	messageID, err = deps.NodeBridge.EmitMessage(CorePlugin.Daemon().ContextStopped(), message)
 	if err != nil {
 		return nil, err
 	}
