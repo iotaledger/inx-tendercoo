@@ -1,30 +1,28 @@
 package coordinator
 
 import (
-	"context"
 	"time"
 
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
 	"github.com/iotaledger/hive.go/serializer/v2"
 	iotago "github.com/iotaledger/iota.go/v3"
+	builder "github.com/iotaledger/iota.go/v3/builder"
 )
 
 // createCheckpoint creates a checkpoint message.
 func (coo *Coordinator) createCheckpoint(parents hornet.MessageIDs) (*iotago.Message, error) {
-	iotaMsg := &iotago.Message{
-		ProtocolVersion: iotago.ProtocolVersion,
-		Parents:         parents.ToSliceOfArrays(),
-		Payload:         nil,
-	}
 
-	// we pass a background context here to not create invalid checkpoints at node shutdown.
-	if err := coo.powHandler.DoPoW(context.Background(), iotaMsg, coo.opts.powWorkerCount); err != nil {
+	iotaMsg, err := builder.
+		NewMessageBuilder().
+		Parents(parents.ToSliceOfSlices()).
+		Build()
+	if err != nil {
 		return nil, err
 	}
 
 	// Validate
-	_, err := iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas)
+	_, err = iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas)
 	if err != nil {
 		return nil, err
 	}
@@ -47,14 +45,18 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 	if err != nil {
 		return nil, err
 	}
+
 	if receipt != nil {
 		msPayload.Opts = iotago.MilestoneOpts{receipt}
 	}
 
-	iotaMsg := &iotago.Message{
-		ProtocolVersion: iotago.ProtocolVersion,
-		Parents:         parentsSliceOfArray,
-		Payload:         msPayload,
+	iotaMsg, err := builder.
+		NewMessageBuilder().
+		ParentsMessageIDs(parentsSliceOfArray).
+		Payload(msPayload).
+		Build()
+	if err != nil {
+		return nil, err
 	}
 
 	if err := msPayload.Sign(pubKeys, coo.createSigningFuncWithRetries(milestoneIndexSigner.SigningFunc())); err != nil {
@@ -64,9 +66,6 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 	if err = msPayload.VerifySignatures(coo.signerProvider.PublicKeysCount(), milestoneIndexSigner.PublicKeysSet()); err != nil {
 		return nil, err
 	}
-
-	// enforce milestone msg nonce == 0
-	iotaMsg.Nonce = 0
 
 	// Perform validation
 	if _, err := iotaMsg.Serialize(serializer.DeSeriModePerformValidation, coo.deSeriParas); err != nil {

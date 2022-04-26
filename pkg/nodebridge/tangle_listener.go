@@ -19,11 +19,19 @@ func newTangleListener() *TangleListener {
 	}
 }
 
-func (t *TangleListener) RegisterMessageSolidEvent(messageID *iotago.MessageID) chan struct{} {
+func (t *TangleListener) MessageSolidSyncEvent() *utils.SyncEvent {
+	return t.messageSolidSyncEvent
+}
+
+func (t *TangleListener) MilestoneConfirmedSyncEvent() *utils.SyncEvent {
+	return t.milestoneConfirmedSyncEvent
+}
+
+func (t *TangleListener) RegisterMessageSolidEvent(messageID iotago.MessageID) chan struct{} {
 	return t.messageSolidSyncEvent.RegisterEvent(string(messageID[:]))
 }
 
-func (t *TangleListener) DeregisterMessageSolidEvent(messageID *iotago.MessageID) {
+func (t *TangleListener) DeregisterMessageSolidEvent(messageID iotago.MessageID) {
 	t.messageSolidSyncEvent.DeregisterEvent(string(messageID[:]))
 }
 

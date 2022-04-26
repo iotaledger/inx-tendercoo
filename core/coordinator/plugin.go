@@ -3,7 +3,6 @@ package coordinator
 import (
 	"crypto/ed25519"
 	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
 	flag "github.com/spf13/pflag"
@@ -15,7 +14,6 @@ import (
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
 	"github.com/gohornet/hornet/pkg/node"
-	"github.com/gohornet/hornet/pkg/pow"
 	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/coordinator"
@@ -148,8 +146,6 @@ func provide(c *dig.Container) {
 				CorePlugin.LogInfo("running coordinator without migration enabled")
 			}
 
-			powHandler := pow.New(float64(deps.NodeBridge.ProtocolParameters.GetMinPoWScore()), 5*time.Second)
-
 			coo, err := coordinator.New(
 				deps.NodeBridge.ComputeMerkleTreeHash,
 				deps.NodeBridge.IsNodeSynced,
@@ -158,12 +154,10 @@ func provide(c *dig.Container) {
 				signingProvider,
 				deps.MigratorService,
 				deps.NodeBridge.LatestTreasuryOutput,
-				powHandler,
 				sendMessage,
 				coordinator.WithLogger(CorePlugin.Logger()),
 				coordinator.WithStateFilePath(deps.AppConfig.String(CfgCoordinatorStateFilePath)),
 				coordinator.WithMilestoneInterval(deps.AppConfig.Duration(CfgCoordinatorInterval)),
-				coordinator.WithPoWWorkerCount(deps.AppConfig.Int(CfgCoordinatorPoWWorkerCount)),
 				coordinator.WithQuorum(deps.AppConfig.Bool(CfgCoordinatorQuorumEnabled), quorumGroups, deps.AppConfig.Duration(CfgCoordinatorQuorumTimeout)),
 				coordinator.WithSigningRetryAmount(deps.AppConfig.Int(CfgCoordinatorSigningRetryAmount)),
 				coordinator.WithSigningRetryTimeout(deps.AppConfig.Duration(CfgCoordinatorSigningRetryTimeout)),
@@ -439,57 +433,50 @@ func initQuorumGroups(appConfig *configuration.Configuration) (map[string][]*coo
 	return quorumGroups, nil
 }
 
-func sendMessage(message *iotago.Message, msIndex ...milestone.Index) error {
+func sendMessage(message *iotago.Message, msIndex ...milestone.Index) (hornet.MessageID, error) {
 
 	var err error
-
-	messageID, err := message.ID()
-	if err != nil {
-		return err
-	}
-
-	msgSolidEventChan := deps.NodeBridge.TangleListener.RegisterMessageSolidEvent(messageID)
 
 	var milestoneConfirmedEventChan chan struct{}
 
 	if len(msIndex) > 0 {
-		milestoneConfirmedEventChan = deps.NodeBridge.TangleListener.RegisterMilestoneConfirmedEvent(msIndex[0])
+		milestoneConfirmedEventChan = deps.NodeBridge.RegisterMilestoneConfirmedEvent(context.Background(), msIndex[0])
 	}
 
 	defer func() {
 		if err != nil {
-			deps.NodeBridge.TangleListener.DeregisterMessageSolidEvent(messageID)
 			if len(msIndex) > 0 {
-				deps.NodeBridge.TangleListener.DeregisterMilestoneConfirmedEvent(msIndex[0])
+				deps.NodeBridge.DeregisterMilestoneConfirmedEvent(msIndex[0])
 			}
 		}
 	}()
 
-	if err = deps.NodeBridge.EmitMessage(CorePlugin.Daemon().ContextStopped(), message); err != nil {
-		return err
+	messageID, err := deps.NodeBridge.EmitMessage(CorePlugin.Daemon().ContextStopped(), message)
+	if err != nil {
+		return nil, err
 	}
+
+	msgSolidEventChan := deps.NodeBridge.RegisterMessageSolidEvent(context.Background(), messageID)
+
+	defer func() {
+		if err != nil {
+			deps.NodeBridge.DeregisterMessageSolidEvent(messageID)
+		}
+	}()
 
 	// wait until the message is solid
 	if err = utils.WaitForChannelClosed(context.Background(), msgSolidEventChan); err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(msIndex) > 0 {
 		// if it was a milestone, also wait until the milestone was confirmed
 		if err = utils.WaitForChannelClosed(context.Background(), milestoneConfirmedEventChan); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
-}
-
-// Events returns the events of the coordinator
-func Events() *coordinator.Events {
-	if deps.Coordinator == nil {
-		return nil
-	}
-	return deps.Coordinator.Events
+	return hornet.MessageIDFromArray(messageID), nil
 }
 
 func configureEvents() {

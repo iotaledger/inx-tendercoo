@@ -26,7 +26,7 @@ type NodeBridge struct {
 	Logger             *logger.Logger
 	Client             inx.INXClient
 	ProtocolParameters *inx.ProtocolParameters
-	TangleListener     *TangleListener
+	tangleListener     *TangleListener
 	Events             *Events
 
 	isSyncedMutex      sync.RWMutex
@@ -72,7 +72,7 @@ func NewNodeBridge(ctx context.Context, client inx.INXClient, enableTreasuryUpda
 		Logger:             logger,
 		Client:             client,
 		ProtocolParameters: protocolParams,
-		TangleListener:     newTangleListener(),
+		tangleListener:     newTangleListener(),
 		Events: &Events{
 			MessageSolid:              events.NewEvent(INXMessageMetadataCaller),
 			ConfirmedMilestoneChanged: events.NewEvent(INXMilestoneCaller),
@@ -174,19 +174,23 @@ func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex mileston
 	return proof, nil
 }
 
-func (n *NodeBridge) EmitMessage(ctx context.Context, message *iotago.Message) error {
+func (n *NodeBridge) EmitMessage(ctx context.Context, message *iotago.Message) (iotago.MessageID, error) {
 
 	msg, err := inx.WrapMessage(message)
 	if err != nil {
-		return err
+		return iotago.MessageID{}, err
 	}
 
-	_, err = n.Client.SubmitMessage(ctx, msg)
+	response, err := n.Client.SubmitMessage(ctx, msg)
 	if err != nil {
-		return err
+		return iotago.MessageID{}, err
 	}
 
-	return nil
+	return response.Unwrap(), nil
+}
+
+func (n *NodeBridge) MessageMetadata(ctx context.Context, messageID iotago.MessageID) (*inx.MessageMetadata, error) {
+	return n.Client.ReadMessageMetadata(ctx, inx.NewMessageId(messageID))
 }
 
 func (n *NodeBridge) listenToSolidMessages(ctx context.Context, cancel context.CancelFunc) error {
@@ -283,7 +287,7 @@ func (n *NodeBridge) listenToTreasuryUpdates(ctx context.Context, cancel context
 }
 
 func (n *NodeBridge) processSolidMessage(metadata *inx.MessageMetadata) {
-	n.TangleListener.processSolidMessage(metadata)
+	n.tangleListener.processSolidMessage(metadata)
 	n.Events.MessageSolid.Trigger(metadata)
 }
 
@@ -298,7 +302,7 @@ func (n *NodeBridge) processConfirmedMilestone(ms *inx.Milestone) {
 	n.confirmedMilestone = ms.GetMilestoneInfo()
 	n.isSyncedMutex.Unlock()
 
-	n.TangleListener.processConfirmedMilestone(ms)
+	n.tangleListener.processConfirmedMilestone(ms)
 	n.Events.ConfirmedMilestoneChanged.Trigger(ms)
 }
 
@@ -309,4 +313,42 @@ func (n *NodeBridge) processTreasuryUpdate(update *inx.TreasuryUpdate) {
 	milestoneID := created.UnwrapMilestoneID()
 	n.Logger.Infof("Updating TreasuryOutput at %d: MilestoneID: %s, Amount: %d ", update.GetMilestoneIndex(), iotago.EncodeHex(milestoneID[:]), created.GetAmount())
 	n.latestTreasuryOutput = created
+}
+
+func (n *NodeBridge) RegisterMessageSolidEvent(ctx context.Context, messageID iotago.MessageID) chan struct{} {
+	messageSolidChan := n.tangleListener.RegisterMessageSolidEvent(messageID)
+
+	// check if the message is already solid
+	metadata, err := n.MessageMetadata(ctx, messageID)
+	if err == nil {
+		if metadata.Solid {
+			// trigger the sync event, because the message is already solid
+			n.tangleListener.MessageSolidSyncEvent().Trigger(messageID)
+		}
+	}
+
+	return messageSolidChan
+}
+
+func (n *NodeBridge) DeregisterMessageSolidEvent(messageID iotago.MessageID) {
+	n.tangleListener.DeregisterMessageSolidEvent(messageID)
+}
+
+func (n *NodeBridge) RegisterMilestoneConfirmedEvent(ctx context.Context, msIndex milestone.Index) chan struct{} {
+	milestoneConfirmedChan := n.tangleListener.RegisterMilestoneConfirmedEvent(msIndex)
+
+	// check if the milestone is already confirmed
+	nodeStatus, err := n.Client.ReadNodeStatus(ctx, &inx.NoParams{})
+	if err == nil {
+		if milestone.Index(nodeStatus.ConfirmedMilestone.GetMilestoneIndex()) >= msIndex {
+			// trigger the sync event, because the milestone is already confirmed
+			n.tangleListener.MilestoneConfirmedSyncEvent().Trigger(msIndex)
+		}
+	}
+
+	return milestoneConfirmedChan
+}
+
+func (n *NodeBridge) DeregisterMilestoneConfirmedEvent(msIndex milestone.Index) {
+	n.tangleListener.DeregisterMilestoneConfirmedEvent(msIndex)
 }

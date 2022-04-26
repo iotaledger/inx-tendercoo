@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,7 +12,6 @@ import (
 	"github.com/gohornet/hornet/pkg/common"
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
-	"github.com/gohornet/hornet/pkg/pow"
 	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/migrator"
 	"github.com/iotaledger/hive.go/events"
@@ -30,7 +28,7 @@ import (
 type BackPressureFunc func() bool
 
 // SendMessageFunc is a function which sends a message to the network.
-type SendMessageFunc = func(message *iotago.Message, msIndex ...milestone.Index) error
+type SendMessageFunc = func(message *iotago.Message, msIndex ...milestone.Index) (hornet.MessageID, error)
 
 // LatestMilestoneInfo contains the info of the latest milestone the connected node knows.
 type LatestMilestoneInfo struct {
@@ -102,8 +100,6 @@ type Coordinator struct {
 	treasuryOutputFunc UnspentTreasuryOutputFunc
 	// used to sign the milestones.
 	signerProvider MilestoneSignerProvider
-	// used to do the PoW for the checkpoint messages.
-	powHandler *pow.Handler
 	// the function used to send a message.
 	sendMessageFunc SendMessageFunc
 	// holds the coordinator options.
@@ -122,7 +118,6 @@ type Coordinator struct {
 const (
 	defaultStateFilePath     = "coordinator.state"
 	defaultMilestoneInterval = time.Duration(10) * time.Second
-	defaultPoWWorkerCount    = 0
 )
 
 var (
@@ -133,7 +128,6 @@ var (
 var defaultOptions = []Option{
 	WithStateFilePath(defaultStateFilePath),
 	WithMilestoneInterval(defaultMilestoneInterval),
-	WithPoWWorkerCount(defaultPoWWorkerCount),
 	WithSigningRetryAmount(10),
 	WithSigningRetryTimeout(2 * time.Second),
 }
@@ -150,8 +144,6 @@ type Options struct {
 	signingRetryTimeout time.Duration
 	// the amount of times to retry signing before bailing and shutting down the Coordinator.
 	signingRetryAmount int
-	// the amount of workers used for calculating PoW when issuing checkpoints and milestones.
-	powWorkerCount int
 	// the optional quorum used by the coordinator to check for correct ledger state calculation.
 	quorum *quorum
 }
@@ -198,22 +190,6 @@ func WithSigningRetryAmount(amount int) Option {
 	}
 }
 
-// WithPoWWorkerCount defines the amount of workers used for calculating PoW when issuing checkpoints and milestones.
-func WithPoWWorkerCount(powWorkerCount int) Option {
-
-	if powWorkerCount == 0 {
-		powWorkerCount = runtime.NumCPU() - 1
-	}
-
-	if powWorkerCount < 1 {
-		powWorkerCount = 1
-	}
-
-	return func(opts *Options) {
-		opts.powWorkerCount = powWorkerCount
-	}
-}
-
 // WithQuorum defines a quorum, which is used to check the correct ledger state of the coordinator.
 // If no quorumGroups are given, the quorum is disabled.
 func WithQuorum(quorumEnabled bool, quorumGroups map[string][]*QuorumClientConfig, timeout time.Duration) Option {
@@ -238,7 +214,6 @@ func New(
 	signerProvider MilestoneSignerProvider,
 	migratorService *migrator.MigratorService,
 	treasuryOutputFunc UnspentTreasuryOutputFunc,
-	powHandler *pow.Handler,
 	sendMessageFunc SendMessageFunc,
 	opts ...Option) (*Coordinator, error) {
 
@@ -258,7 +233,6 @@ func New(
 		signerProvider:     signerProvider,
 		migratorService:    migratorService,
 		treasuryOutputFunc: treasuryOutputFunc,
-		powHandler:         powHandler,
 		sendMessageFunc:    sendMessageFunc,
 		opts:               options,
 
@@ -416,13 +390,8 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 		return common.CriticalError(fmt.Errorf("unable to rename old coordinator state file: %w", err))
 	}
 
-	// always reference the last milestone directly to speed up syncing
-	latestMilestoneMessageID, err := milestoneMsg.ID()
+	latestMilestoneMessageID, err := coo.sendMessageFunc(milestoneMsg, newMilestoneIndex)
 	if err != nil {
-		return common.CriticalError(fmt.Errorf("unable to generate message ID before send: %w", err))
-	}
-
-	if err := coo.sendMessageFunc(milestoneMsg, newMilestoneIndex); err != nil {
 		return common.CriticalError(fmt.Errorf("failed to send milestone: %w", err))
 	}
 
@@ -432,7 +401,8 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 		}
 	}
 
-	coo.state.LatestMilestoneMessageID = hornet.MessageIDFromArray(*latestMilestoneMessageID)
+	// always reference the last milestone directly to speed up syncing
+	coo.state.LatestMilestoneMessageID = latestMilestoneMessageID
 	coo.state.LatestMilestoneID = *milestoneID
 	coo.state.LatestMilestoneIndex = newMilestoneIndex
 	coo.state.LatestMilestoneTime = newMilestoneTimestamp
@@ -512,16 +482,12 @@ func (coo *Coordinator) IssueCheckpoint(checkpointIndex int, lastCheckpointMessa
 			return nil, common.SoftError(fmt.Errorf("failed to create checkPoint: %w", err))
 		}
 
-		msgID, err := msg.ID()
+		messageID, err := coo.sendMessageFunc(msg)
 		if err != nil {
-			return nil, common.SoftError(fmt.Errorf("failed to compute checkPoint message ID before sending: %w", err))
-		}
-
-		if err := coo.sendMessageFunc(msg); err != nil {
 			return nil, common.SoftError(fmt.Errorf("failed to send checkPoint: %w", err))
 		}
 
-		lastCheckpointMessageID = hornet.MessageIDFromArray(*msgID)
+		lastCheckpointMessageID = messageID
 
 		coo.Events.IssuedCheckpointMessage.Trigger(checkpointIndex, i, checkpointsNumber, lastCheckpointMessageID)
 	}
