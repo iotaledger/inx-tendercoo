@@ -78,7 +78,7 @@ type MilestoneMerkleRoots struct {
 	AppliedMerkleRoot iotago.MilestoneMerkleProof
 }
 
-type ComputeMilestoneMerkleRoots = func(ctx context.Context, index milestone.Index, timestamp uint32, parents hornet.MessageIDs, lastMilestoneID iotago.MilestoneID) (*MilestoneMerkleRoots, error)
+type ComputeMilestoneMerkleRoots = func(ctx context.Context, index milestone.Index, timestamp uint32, parents hornet.MessageIDs, previousMilestoneID iotago.MilestoneID) (*MilestoneMerkleRoots, error)
 
 // Coordinator is used to issue signed messages, called "milestones" to secure an IOTA network and prevent double spends.
 type Coordinator struct {
@@ -312,7 +312,7 @@ func (coo *Coordinator) InitState(bootstrap bool, startIndex milestone.Index, la
 
 // createAndSendMilestone creates a milestone, sends it to the network and stores a new coordinator state file.
 // Returns non-critical and critical errors.
-func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMilestoneIndex milestone.Index, lastMilestoneID iotago.MilestoneID) error {
+func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMilestoneIndex milestone.Index, previousMilestoneID iotago.MilestoneID) error {
 
 	parents = parents.RemoveDupsAndSortByLexicalOrder()
 
@@ -323,7 +323,7 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 	// compute merkle tree root
 	// we pass a background context here to not cancel the white-flag computation!
 	// otherwise the coordinator could panic at shutdown.
-	merkleProof, err := coo.merkleRootFunc(context.Background(), newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, lastMilestoneID)
+	merkleProof, err := coo.merkleRootFunc(context.Background(), newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, previousMilestoneID)
 	if err != nil {
 		return common.CriticalError(fmt.Errorf("failed to compute white flag mutations: %w", err))
 	}
@@ -331,7 +331,7 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 	// ask the quorum for correct ledger state if enabled
 	if coo.opts.quorum != nil {
 		ts := time.Now()
-		err := coo.opts.quorum.checkMerkleTreeHash(merkleProof, newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, lastMilestoneID, func(groupName string, entry *quorumGroupEntry, err error) {
+		err := coo.opts.quorum.checkMerkleTreeHash(merkleProof, newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, previousMilestoneID, func(groupName string, entry *quorumGroupEntry, err error) {
 			coo.LogInfof("coordinator quorum group encountered an error, group: %s, baseURL: %s, err: %s", groupName, entry.stats.BaseURL, err)
 		})
 
@@ -371,7 +371,7 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 		}
 	}
 
-	milestoneMsg, err := coo.createMilestone(newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, receipt, lastMilestoneID, merkleProof)
+	milestoneMsg, err := coo.createMilestone(newMilestoneIndex, uint32(newMilestoneTimestamp.Unix()), parents, receipt, previousMilestoneID, merkleProof)
 	if err != nil {
 		return common.CriticalError(fmt.Errorf("failed to create milestone: %w", err))
 	}

@@ -126,7 +126,7 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 	index milestone.Index,
 	timestamp uint32,
 	parents hornet.MessageIDs,
-	lastMilestoneID iotago.MilestoneID,
+	previousMilestoneID iotago.MilestoneID,
 	onGroupEntryError func(groupName string, entry *quorumGroupEntry, err error)) {
 	// mark the group as done at the end
 	defer wg.Done()
@@ -144,7 +144,7 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 		go func(entry *quorumGroupEntry, nodeResultChan chan *nodeclient.ComputeWhiteFlagMutationsResponse, nodeErrorChan chan error) {
 			ts := time.Now()
 
-			response, err := entry.api.ComputeWhiteFlagMutations(ctx, uint32(index), timestamp, parents.ToSliceOfArrays(), lastMilestoneID)
+			response, err := entry.api.ComputeWhiteFlagMutations(ctx, uint32(index), timestamp, parents.ToSliceOfArrays(), previousMilestoneID)
 
 			// set the stats for the node
 			entry.stats.ResponseTimeSeconds = time.Since(ts).Seconds()
@@ -203,7 +203,7 @@ func (q *quorum) checkMerkleTreeHash(cooMerkleProof *MilestoneMerkleRoots,
 	index milestone.Index,
 	timestamp uint32,
 	parents hornet.MessageIDs,
-	lastMilestoneID iotago.MilestoneID,
+	previousMilestoneID iotago.MilestoneID,
 	onGroupEntryError func(groupName string, entry *quorumGroupEntry, err error)) error {
 	q.quorumStatsLock.Lock()
 	defer q.quorumStatsLock.Unlock()
@@ -216,7 +216,7 @@ func (q *quorum) checkMerkleTreeHash(cooMerkleProof *MilestoneMerkleRoots,
 		wg.Add(1)
 
 		// ask all groups in parallel
-		go q.checkMerkleTreeHashQuorumGroup(cooMerkleProof, groupName, quorumGroupEntries, wg, quorumDoneChan, quorumErrChan, index, timestamp, parents, lastMilestoneID, onGroupEntryError)
+		go q.checkMerkleTreeHashQuorumGroup(cooMerkleProof, groupName, quorumGroupEntries, wg, quorumDoneChan, quorumErrChan, index, timestamp, parents, previousMilestoneID, onGroupEntryError)
 	}
 
 	go func(wg *sync.WaitGroup, doneChan chan struct{}) {
