@@ -13,7 +13,7 @@ import (
 	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
 	"github.com/gohornet/inx-coordinator/pkg/nodebridge"
-	"github.com/gohornet/inx-coordinator/plugin/migrator"
+	"github.com/gohornet/inx-coordinator/plugins/migrator"
 	"github.com/iotaledger/hive.go/configuration"
 	inx "github.com/iotaledger/inx/go"
 )
