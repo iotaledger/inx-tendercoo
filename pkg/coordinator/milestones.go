@@ -41,7 +41,7 @@ func (coo *Coordinator) createMilestone(index milestone.Index, timestamp uint32,
 	appliedMerkleRoot := [iotago.MilestoneMerkleProofLength]byte{}
 	copy(appliedMerkleRoot[:], merkleProof.AppliedMerkleRoot[:])
 
-	msPayload := iotago.NewMilestone(uint32(index), timestamp, previousMilestoneID, parentsSliceOfArray, confMerkleRoot, appliedMerkleRoot)
+	msPayload := iotago.NewMilestone(uint32(index), timestamp, coo.protoParas.Version, previousMilestoneID, parentsSliceOfArray, confMerkleRoot, appliedMerkleRoot)
 
 	if receipt != nil {
 		msPayload.Opts = iotago.MilestoneOpts{receipt}
