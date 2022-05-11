@@ -11,7 +11,6 @@ import (
 	coreDatabase "github.com/gohornet/hornet/core/database"
 	"github.com/gohornet/hornet/pkg/database"
 	"github.com/gohornet/hornet/pkg/model/storage"
-	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/coordinator"
 )
 
@@ -118,7 +117,7 @@ func coordinatorFixStateFile(args []string) error {
 		LatestMilestoneTime:      cachedMilestone.Milestone().Timestamp,
 	}
 
-	if err := utils.WriteJSONToFile(coordinatorStateFilePath, state, 0660); err != nil {
+	if err := ioutils.WriteJSONToFile(coordinatorStateFilePath, state, 0660); err != nil {
 		return fmt.Errorf("failed to write coordinator state file (%s), error: %w", coordinatorStateFilePath, err)
 	}
 

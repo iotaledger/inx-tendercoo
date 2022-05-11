@@ -8,8 +8,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/gohornet/hornet/pkg/common"
-	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/ioutils"
 	"github.com/iotaledger/hive.go/syncutils"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -122,7 +122,7 @@ func (s *MigratorService) PersistState(sendingReceipt bool) error {
 		return fmt.Errorf("unable to create backup of migrator state file: %w", err)
 	}
 
-	return utils.WriteJSONToFile(s.stateFilePath, &s.state, 0660)
+	return ioutils.WriteJSONToFile(s.stateFilePath, &s.state, 0660)
 }
 
 // InitState initializes the state of s.
@@ -137,7 +137,7 @@ func (s *MigratorService) InitState(msIndex *uint32) error {
 	var state State
 	if msIndex == nil {
 		// restore state from file
-		if err := utils.ReadJSONFromFile(s.stateFilePath, &state); err != nil {
+		if err := ioutils.ReadJSONFromFile(s.stateFilePath, &state); err != nil {
 			return fmt.Errorf("failed to load state file: %w", err)
 		}
 	} else {

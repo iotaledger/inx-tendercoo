@@ -5,7 +5,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
-	"github.com/gohornet/hornet/pkg/node"
+	"github.com/iotaledger/hive.go/app"
 )
 
 const (
@@ -43,25 +43,21 @@ const (
 	CfgCoordinatorTipselectHeaviestBranchSelectionTimeout = "coordinator.tipsel.heaviestBranchSelectionTimeout"
 )
 
-var params = &node.PluginParams{
-	Params: map[string]*flag.FlagSet{
-		"appConfig": func() *flag.FlagSet {
-			fs := flag.NewFlagSet("", flag.ContinueOnError)
-			fs.String(CfgCoordinatorStateFilePath, "coordinator.state", "the path to the state file of the coordinator")
-			fs.Duration(CfgCoordinatorInterval, 10*time.Second, "the interval milestones are issued")
-			fs.Duration(CfgCoordinatorSigningRetryTimeout, 2*time.Second, "defines the timeout between signing retries")
-			fs.Int(CfgCoordinatorSigningRetryAmount, 10, "defines the number of signing retries to perform before shutting down the node")
-			fs.String(CfgCoordinatorSigningProvider, "local", "the signing provider the coordinator uses to sign a milestone (local/remote)")
-			fs.String(CfgCoordinatorSigningRemoteAddress, "localhost:12345", "the address of the remote signing provider (insecure connection!)")
-			fs.Bool(CfgCoordinatorQuorumEnabled, false, "whether the coordinator quorum is enabled")
-			fs.Duration(CfgCoordinatorQuorumTimeout, 2*time.Second, "the timeout until a node in the quorum must have answered")
-			fs.Int(CfgCoordinatorCheckpointsMaxTrackedMessages, 10000, "maximum amount of known messages for milestone tipselection")
-			fs.Int(CfgCoordinatorTipselectMinHeaviestBranchUnreferencedMessagesThreshold, 20, "minimum threshold of unreferenced messages in the heaviest branch")
-			fs.Int(CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint, 10, "maximum amount of checkpoint messages with heaviest branch tips")
-			fs.Int(CfgCoordinatorTipselectRandomTipsPerCheckpoint, 3, "amount of checkpoint messages with random tips")
-			fs.Duration(CfgCoordinatorTipselectHeaviestBranchSelectionTimeout, 100*time.Millisecond, "the maximum duration to select the heaviest branch tips")
-			return fs
-		}(),
+var params = &app.ComponentParams{
+	Params: func(fs *flag.FlagSet) {
+		fs.String(CfgCoordinatorStateFilePath, "coordinator.state", "the path to the state file of the coordinator")
+		fs.Duration(CfgCoordinatorInterval, 10*time.Second, "the interval milestones are issued")
+		fs.Duration(CfgCoordinatorSigningRetryTimeout, 2*time.Second, "defines the timeout between signing retries")
+		fs.Int(CfgCoordinatorSigningRetryAmount, 10, "defines the number of signing retries to perform before shutting down the node")
+		fs.String(CfgCoordinatorSigningProvider, "local", "the signing provider the coordinator uses to sign a milestone (local/remote)")
+		fs.String(CfgCoordinatorSigningRemoteAddress, "localhost:12345", "the address of the remote signing provider (insecure connection!)")
+		fs.Bool(CfgCoordinatorQuorumEnabled, false, "whether the coordinator quorum is enabled")
+		fs.Duration(CfgCoordinatorQuorumTimeout, 2*time.Second, "the timeout until a node in the quorum must have answered")
+		fs.Int(CfgCoordinatorCheckpointsMaxTrackedMessages, 10000, "maximum amount of known messages for milestone tipselection")
+		fs.Int(CfgCoordinatorTipselectMinHeaviestBranchUnreferencedMessagesThreshold, 20, "minimum threshold of unreferenced messages in the heaviest branch")
+		fs.Int(CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint, 10, "maximum amount of checkpoint messages with heaviest branch tips")
+		fs.Int(CfgCoordinatorTipselectRandomTipsPerCheckpoint, 3, "amount of checkpoint messages with random tips")
+		fs.Duration(CfgCoordinatorTipselectHeaviestBranchSelectionTimeout, 100*time.Millisecond, "the maximum duration to select the heaviest branch tips")
 	},
 	Masked: nil,
 }

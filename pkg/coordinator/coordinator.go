@@ -12,9 +12,9 @@ import (
 	"github.com/gohornet/hornet/pkg/common"
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
-	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/migrator"
 	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/ioutils"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/hive.go/syncutils"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -83,7 +83,7 @@ type ComputeMilestoneMerkleRoots = func(ctx context.Context, index milestone.Ind
 // Coordinator is used to issue signed messages, called "milestones" to secure an IOTA network and prevent double spends.
 type Coordinator struct {
 	// the logger used to log events.
-	*utils.WrappedLogger
+	*logger.WrappedLogger
 	// used to compute the merkle roots used inside the milestone payload.
 	merkleRootFunc ComputeMilestoneMerkleRoots
 	// used to issue only one milestone at a time.
@@ -239,7 +239,7 @@ func New(
 			QuorumFinished:          events.NewEvent(QuorumFinishedCaller),
 		},
 	}
-	result.WrappedLogger = utils.NewWrappedLogger(options.logger)
+	result.WrappedLogger = logger.NewWrappedLogger(options.logger)
 
 	return result, nil
 }
@@ -296,7 +296,7 @@ func (coo *Coordinator) InitState(bootstrap bool, startIndex milestone.Index, la
 	}
 
 	coo.state = &State{}
-	if err := utils.ReadJSONFromFile(coo.opts.stateFilePath, coo.state); err != nil {
+	if err := ioutils.ReadJSONFromFile(coo.opts.stateFilePath, coo.state); err != nil {
 		return err
 	}
 
@@ -403,7 +403,7 @@ func (coo *Coordinator) createAndSendMilestone(parents hornet.MessageIDs, newMil
 	coo.state.LatestMilestoneIndex = newMilestoneIndex
 	coo.state.LatestMilestoneTime = newMilestoneTimestamp
 
-	if err := utils.WriteJSONToFile(coo.opts.stateFilePath, coo.state, 0660); err != nil {
+	if err := ioutils.WriteJSONToFile(coo.opts.stateFilePath, coo.state, 0660); err != nil {
 		return common.CriticalError(fmt.Errorf("failed to update coordinator state file: %w", err))
 	}
 

@@ -1,28 +1,30 @@
 package coordinator
 
 import (
+	"context"
 	"crypto/ed25519"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 	flag "github.com/spf13/pflag"
 	"go.uber.org/dig"
-	"golang.org/x/net/context"
 
 	"github.com/gohornet/hornet/pkg/common"
 	"github.com/gohornet/hornet/pkg/keymanager"
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
-	"github.com/gohornet/hornet/pkg/node"
 	"github.com/gohornet/hornet/pkg/shutdown"
-	"github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/coordinator"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
 	"github.com/gohornet/inx-coordinator/pkg/migrator"
 	"github.com/gohornet/inx-coordinator/pkg/mselection"
 	"github.com/gohornet/inx-coordinator/pkg/nodebridge"
 	"github.com/gohornet/inx-coordinator/pkg/todo"
+	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/configuration"
+	"github.com/iotaledger/hive.go/crypto"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/syncutils"
 	"github.com/iotaledger/hive.go/timeutil"
@@ -44,11 +46,8 @@ var (
 )
 
 func init() {
-	_ = flag.CommandLine.MarkHidden(CfgCoordinatorBootstrap)
-	_ = flag.CommandLine.MarkHidden(CfgCoordinatorStartIndex)
-
-	CorePlugin = &node.CorePlugin{
-		Pluggable: node.Pluggable{
+	CoreComponent = &app.CoreComponent{
+		Component: &app.Component{
 			Name:      "Coordinator",
 			DepsFunc:  func(cDeps dependencies) { deps = cDeps },
 			Params:    params,
@@ -60,8 +59,8 @@ func init() {
 }
 
 var (
-	CorePlugin *node.CorePlugin
-	deps       dependencies
+	CoreComponent *app.CoreComponent
+	deps          dependencies
 
 	bootstrap  = flag.Bool(CfgCoordinatorBootstrap, false, "bootstrap the network")
 	startIndex = flag.Uint32(CfgCoordinatorStartIndex, 0, "index of the first milestone at bootstrap")
@@ -93,7 +92,7 @@ type dependencies struct {
 	ShutdownHandler *shutdown.ShutdownHandler
 }
 
-func provide(c *dig.Container) {
+func provide(c *dig.Container) error {
 
 	type selectorDeps struct {
 		dig.In
@@ -109,7 +108,7 @@ func provide(c *dig.Container) {
 			deps.AppConfig.Duration(CfgCoordinatorTipselectHeaviestBranchSelectionTimeout),
 		)
 	}); err != nil {
-		CorePlugin.LogPanic(err)
+		return err
 	}
 
 	type coordinatorDeps struct {
@@ -139,11 +138,11 @@ func provide(c *dig.Container) {
 			}
 
 			if deps.AppConfig.Bool(CfgCoordinatorQuorumEnabled) {
-				CorePlugin.LogInfo("running coordinator with quorum enabled")
+				CoreComponent.LogInfo("running coordinator with quorum enabled")
 			}
 
 			if deps.MigratorService == nil {
-				CorePlugin.LogInfo("running coordinator without migration enabled")
+				CoreComponent.LogInfo("running coordinator without migration enabled")
 			}
 
 			coo, err := coordinator.New(
@@ -154,7 +153,7 @@ func provide(c *dig.Container) {
 				deps.MigratorService,
 				deps.NodeBridge.LatestTreasuryOutput,
 				sendMessage,
-				coordinator.WithLogger(CorePlugin.Logger()),
+				coordinator.WithLogger(CoreComponent.Logger()),
 				coordinator.WithStateFilePath(deps.AppConfig.String(CfgCoordinatorStateFilePath)),
 				coordinator.WithMilestoneInterval(deps.AppConfig.Duration(CfgCoordinatorInterval)),
 				coordinator.WithQuorum(deps.AppConfig.Bool(CfgCoordinatorQuorumEnabled), quorumGroups, deps.AppConfig.Duration(CfgCoordinatorQuorumTimeout)),
@@ -177,23 +176,24 @@ func provide(c *dig.Container) {
 
 		coo, err := initCoordinator()
 		if err != nil {
-			CorePlugin.LogPanic(err)
+			CoreComponent.LogPanic(err)
 		}
 		return coo
 	}); err != nil {
-		CorePlugin.LogPanic(err)
+		return err
 	}
+	return nil
 }
 
-func configure() {
+func configure() error {
 
 	databasesTainted, err := todo.AreDatabasesTainted()
 	if err != nil {
-		CorePlugin.LogPanic(err)
+		CoreComponent.LogPanic(err)
 	}
 
 	if databasesTainted {
-		CorePlugin.LogPanic(ErrDatabaseTainted)
+		CoreComponent.LogPanic(ErrDatabaseTainted)
 	}
 
 	nextCheckpointSignal = make(chan struct{})
@@ -205,6 +205,7 @@ func configure() {
 	maxTrackedMessages = deps.AppConfig.Int(CfgCoordinatorCheckpointsMaxTrackedMessages)
 
 	configureEvents()
+	return nil
 }
 
 // handleError checks for critical errors and returns true if the node should shutdown.
@@ -219,21 +220,21 @@ func handleError(err error) bool {
 	}
 
 	if err := common.IsSoftError(err); err != nil {
-		CorePlugin.LogWarn(err)
+		CoreComponent.LogWarn(err)
 		deps.Coordinator.Events.SoftError.Trigger(err)
 		return false
 	}
 
 	// this should not happen! errors should be defined as a soft or critical error explicitly
-	CorePlugin.LogPanicf("coordinator plugin hit an unknown error type: %s", err)
+	CoreComponent.LogPanicf("coordinator plugin hit an unknown error type: %s", err)
 	return true
 }
 
-func run() {
+func run() error {
 
 	// create a background worker that signals to issue new milestones
-	if err := CorePlugin.Daemon().BackgroundWorker("Coordinator[MilestoneTicker]", func(ctx context.Context) {
-		CorePlugin.LogInfo("Start MilestoneTicker")
+	if err := CoreComponent.Daemon().BackgroundWorker("Coordinator[MilestoneTicker]", func(ctx context.Context) {
+		CoreComponent.LogInfo("Start MilestoneTicker")
 		ticker := timeutil.NewTicker(func() {
 			// issue next milestone
 			select {
@@ -244,11 +245,11 @@ func run() {
 		}, deps.Coordinator.Interval(), ctx)
 		ticker.WaitForGracefulShutdown()
 	}, daemon.PriorityStopCoordinatorMilestoneTicker); err != nil {
-		CorePlugin.LogPanicf("failed to start worker: %s", err)
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
 	}
 
 	// create a background worker that issues milestones
-	if err := CorePlugin.Daemon().BackgroundWorker("Coordinator", func(ctx context.Context) {
+	if err := CoreComponent.Daemon().BackgroundWorker("Coordinator", func(ctx context.Context) {
 		attachEvents()
 
 		// bootstrap the network if not done yet
@@ -286,7 +287,7 @@ func run() {
 					if err != nil {
 						// issuing checkpoint failed => not critical
 						if !errors.Is(err, mselection.ErrNoTipsAvailable) {
-							CorePlugin.LogWarn(err)
+							CoreComponent.LogWarn(err)
 						}
 						return
 					}
@@ -295,7 +296,7 @@ func run() {
 					checkpointMessageID, err := deps.Coordinator.IssueCheckpoint(lastCheckpointIndex, lastCheckpointMessageID, tips)
 					if err != nil {
 						// issuing checkpoint failed => not critical
-						CorePlugin.LogWarn(err)
+						CoreComponent.LogWarn(err)
 						return
 					}
 					lastCheckpointIndex++
@@ -310,7 +311,7 @@ func run() {
 				if err != nil {
 					// issuing checkpoint failed => not critical
 					if !errors.Is(err, mselection.ErrNoTipsAvailable) {
-						CorePlugin.LogWarn(err)
+						CoreComponent.LogWarn(err)
 					}
 				} else {
 					if len(checkpointTips) > MilestoneMaxAdditionalTipsLimit {
@@ -318,7 +319,7 @@ func run() {
 						checkpointMessageID, err := deps.Coordinator.IssueCheckpoint(lastCheckpointIndex, lastCheckpointMessageID, checkpointTips[MilestoneMaxAdditionalTipsLimit:])
 						if err != nil {
 							// issuing checkpoint failed => not critical
-							CorePlugin.LogWarn(err)
+							CoreComponent.LogWarn(err)
 						} else {
 							// use the new checkpoint message ID
 							lastCheckpointMessageID = checkpointMessageID
@@ -367,16 +368,41 @@ func run() {
 
 		detachEvents()
 	}, daemon.PriorityStopCoordinator); err != nil {
-		CorePlugin.LogPanicf("failed to start worker: %s", err)
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
+	return nil
+}
+
+// loadEd25519PrivateKeysFromEnvironment loads ed25519 private keys from the given environment variable.
+func loadEd25519PrivateKeysFromEnvironment(name string) ([]ed25519.PrivateKey, error) {
+
+	keys, exists := os.LookupEnv(name)
+	if !exists {
+		return nil, fmt.Errorf("environment variable '%s' not set", name)
 	}
 
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("environment variable '%s' not set", name)
+	}
+
+	var privateKeys []ed25519.PrivateKey
+	for _, key := range strings.Split(keys, ",") {
+		privateKey, err := crypto.ParseEd25519PrivateKeyFromString(key)
+		if err != nil {
+			return nil, fmt.Errorf("environment variable '%s' contains an invalid private key '%s'", name, key)
+
+		}
+		privateKeys = append(privateKeys, privateKey)
+	}
+
+	return privateKeys, nil
 }
 
 func initSigningProvider(signingProviderType string, remoteEndpoint string, keyManager *keymanager.KeyManager, milestonePublicKeyCount int) (coordinator.MilestoneSignerProvider, error) {
 
 	switch signingProviderType {
 	case "local":
-		privateKeys, err := utils.LoadEd25519PrivateKeysFromEnvironment("COO_PRV_KEYS")
+		privateKeys, err := loadEd25519PrivateKeysFromEnvironment("COO_PRV_KEYS")
 		if err != nil {
 			return nil, err
 		}
@@ -448,7 +474,7 @@ func sendMessage(message *iotago.Message, msIndex ...milestone.Index) (hornet.Me
 	}
 
 	var messageID iotago.MessageID
-	messageID, err = deps.NodeBridge.EmitMessage(CorePlugin.Daemon().ContextStopped(), message)
+	messageID, err = deps.NodeBridge.EmitMessage(CoreComponent.Daemon().ContextStopped(), message)
 	if err != nil {
 		return nil, err
 	}
@@ -462,13 +488,13 @@ func sendMessage(message *iotago.Message, msIndex ...milestone.Index) (hornet.Me
 	}()
 
 	// wait until the message is solid
-	if err = utils.WaitForChannelClosed(context.Background(), msgSolidEventChan); err != nil {
+	if err = events.WaitForChannelClosed(context.Background(), msgSolidEventChan); err != nil {
 		return nil, err
 	}
 
 	if len(msIndex) > 0 {
 		// if it was a milestone, also wait until the milestone was confirmed
-		if err = utils.WaitForChannelClosed(context.Background(), milestoneConfirmedEventChan); err != nil {
+		if err = events.WaitForChannelClosed(context.Background(), milestoneConfirmedEventChan); err != nil {
 			return nil, err
 		}
 	}
@@ -487,7 +513,7 @@ func configureEvents() {
 
 		// add tips to the heaviest branch selector
 		if trackedMessagesCount := deps.Selector.OnNewSolidMessage(metadata); trackedMessagesCount >= maxTrackedMessages {
-			CorePlugin.LogDebugf("Coordinator Tipselector: trackedMessagesCount: %d", trackedMessagesCount)
+			CoreComponent.LogDebugf("Coordinator Tipselector: trackedMessagesCount: %d", trackedMessagesCount)
 
 			// issue next checkpoint
 			select {
@@ -514,11 +540,11 @@ func configureEvents() {
 	})
 
 	onIssuedCheckpoint = events.NewClosure(func(checkpointIndex int, tipIndex int, tipsTotal int, messageID hornet.MessageID) {
-		CorePlugin.LogInfof("checkpoint (%d) message issued (%d/%d): %v", checkpointIndex+1, tipIndex+1, tipsTotal, messageID.ToHex())
+		CoreComponent.LogInfof("checkpoint (%d) message issued (%d/%d): %v", checkpointIndex+1, tipIndex+1, tipsTotal, messageID.ToHex())
 	})
 
 	onIssuedMilestone = events.NewClosure(func(index milestone.Index, milestoneID iotago.MilestoneID, messageID hornet.MessageID) {
-		CorePlugin.LogInfof("milestone issued (%d) MilestoneID: %s, MessageID: %v", index, iotago.EncodeHex(milestoneID[:]), messageID.ToHex())
+		CoreComponent.LogInfof("milestone issued (%d) MilestoneID: %s, MessageID: %v", index, iotago.EncodeHex(milestoneID[:]), messageID.ToHex())
 	})
 }
 

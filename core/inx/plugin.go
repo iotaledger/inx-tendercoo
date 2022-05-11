@@ -9,18 +9,18 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/gohornet/hornet/pkg/node"
 	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
 	"github.com/gohornet/inx-coordinator/pkg/nodebridge"
 	"github.com/gohornet/inx-coordinator/plugins/migrator"
+	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/configuration"
 	inx "github.com/iotaledger/inx/go"
 )
 
 func init() {
-	CorePlugin = &node.CorePlugin{
-		Pluggable: node.Pluggable{
+	CoreComponent = &app.CoreComponent{
+		Component: &app.Component{
 			Name:     "INX",
 			DepsFunc: func(cDeps dependencies) { deps = cDeps },
 			Params:   params,
@@ -38,11 +38,11 @@ type dependencies struct {
 }
 
 var (
-	CorePlugin *node.CorePlugin
-	deps       dependencies
+	CoreComponent *app.CoreComponent
+	deps          dependencies
 )
 
-func provide(c *dig.Container) {
+func provide(c *dig.Container) error {
 
 	type inxDeps struct {
 		dig.In
@@ -72,27 +72,27 @@ func provide(c *dig.Container) {
 			INXClient:  client,
 		}, nil
 	}); err != nil {
-		CorePlugin.LogPanic(err)
+		return err
 	}
 
 	if err := c.Provide(func(client inx.INXClient) (*nodebridge.NodeBridge, error) {
-		migrationsEnabled := !CorePlugin.Node.IsSkipped(migrator.Plugin)
-		return nodebridge.NewNodeBridge(CorePlugin.Daemon().ContextStopped(),
+		migrationsEnabled := !CoreComponent.App.IsPluginSkipped(migrator.Plugin)
+		return nodebridge.NewNodeBridge(CoreComponent.Daemon().ContextStopped(),
 			client,
 			migrationsEnabled,
-			CorePlugin.Logger())
+			CoreComponent.Logger())
 	}); err != nil {
-		CorePlugin.LogPanic(err)
+		return err
 	}
+
+	return nil
 }
 
-func run() {
-	if err := CorePlugin.Daemon().BackgroundWorker("INX", func(ctx context.Context) {
-		CorePlugin.LogInfo("Starting NodeBridge")
+func run() error {
+	return CoreComponent.Daemon().BackgroundWorker("INX", func(ctx context.Context) {
+		CoreComponent.LogInfo("Starting NodeBridge")
 		deps.NodeBridge.Run(ctx)
-		CorePlugin.LogInfo("Stopped NodeBridge")
+		CoreComponent.LogInfo("Stopped NodeBridge")
 		deps.Connection.Close()
-	}, daemon.PriorityDisconnectINX); err != nil {
-		CorePlugin.LogPanicf("failed to start worker: %s", err)
-	}
+	}, daemon.PriorityDisconnectINX)
 }

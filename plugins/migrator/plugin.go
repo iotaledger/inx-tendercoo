@@ -10,10 +10,10 @@ import (
 
 	"github.com/gohornet/hornet/pkg/common"
 	validator "github.com/gohornet/hornet/pkg/model/migrator"
-	"github.com/gohornet/hornet/pkg/node"
 	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
 	"github.com/gohornet/inx-coordinator/pkg/migrator"
+	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/configuration"
 	"github.com/iotaledger/hive.go/timeutil"
 	legacyapi "github.com/iotaledger/iota.go/api"
@@ -28,12 +28,9 @@ const (
 )
 
 func init() {
-	_ = flag.CommandLine.MarkHidden(CfgMigratorBootstrap)
-	_ = flag.CommandLine.MarkHidden(CfgMigratorStartIndex)
-
-	Plugin = &node.Plugin{
-		Status: node.StatusDisabled,
-		Pluggable: node.Pluggable{
+	Plugin = &app.Plugin{
+		Status: app.StatusDisabled,
+		Component: &app.Component{
 			Name:      "Migrator",
 			DepsFunc:  func(cDeps dependencies) { deps = cDeps },
 			Params:    params,
@@ -45,7 +42,7 @@ func init() {
 }
 
 var (
-	Plugin *node.Plugin
+	Plugin *app.Plugin
 	deps   dependencies
 
 	bootstrap  = flag.Bool(CfgMigratorBootstrap, false, "bootstrap the migration process")
@@ -60,7 +57,7 @@ type dependencies struct {
 }
 
 // provide provides the MigratorService as a singleton.
-func provide(c *dig.Container) {
+func provide(c *dig.Container) error {
 
 	type validatorDeps struct {
 		dig.In
@@ -81,7 +78,7 @@ func provide(c *dig.Container) {
 			deps.AppConfig.Int(CfgReceiptsValidatorCoordinatorMerkleTreeDepth),
 		)
 	}); err != nil {
-		Plugin.LogPanic(err)
+		return err
 	}
 
 	type serviceDeps struct {
@@ -106,11 +103,12 @@ func provide(c *dig.Container) {
 			deps.AppConfig.Int(CfgMigratorReceiptMaxEntries),
 		)
 	}); err != nil {
-		Plugin.LogPanic(err)
+		return err
 	}
+	return nil
 }
 
-func configure() {
+func configure() error {
 
 	var msIndex *uint32
 	if *bootstrap {
@@ -120,11 +118,12 @@ func configure() {
 	if err := deps.MigratorService.InitState(msIndex); err != nil {
 		Plugin.LogFatalf("failed to initialize migrator: %s", err)
 	}
+	return nil
 }
 
-func run() {
+func run() error {
 
-	if err := Plugin.Node.Daemon().BackgroundWorker(Plugin.Name, func(ctx context.Context) {
+	if err := Plugin.App.Daemon().BackgroundWorker(Plugin.Name, func(ctx context.Context) {
 		Plugin.LogInfof("Starting %s ... done", Plugin.Name)
 		deps.MigratorService.Start(ctx, func(err error) bool {
 
@@ -143,6 +142,7 @@ func run() {
 		})
 		Plugin.LogInfof("Stopping %s ... done", Plugin.Name)
 	}, daemon.PriorityStopMigrator); err != nil {
-		Plugin.LogPanicf("failed to start worker: %s", err)
+		return err
 	}
+	return nil
 }

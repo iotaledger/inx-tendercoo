@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/gohornet/hornet/pkg/model/hornet"
-	randUtils "github.com/gohornet/hornet/pkg/utils"
 	"github.com/gohornet/inx-coordinator/pkg/utils"
 	inx "github.com/iotaledger/inx/go"
 )
@@ -62,7 +61,7 @@ func (il *trackedMessagesList) randomTip() (*trackedMessage, error) {
 		return nil, ErrNoTipsAvailable
 	}
 
-	randomMsgIndex := randUtils.RandomInsecure(0, len(il.msgs)-1)
+	randomMsgIndex := randomInsecure(0, len(il.msgs)-1)
 
 	for _, tip := range il.msgs {
 		randomMsgIndex--
@@ -156,7 +155,7 @@ func (s *HeaviestSelector) selectTip(tipsList *trackedMessagesList) (*trackedMes
 	}
 
 	// select a random tip from the provided slice of tips.
-	selected := best.tips[randUtils.RandomInsecure(0, len(best.tips)-1)]
+	selected := best.tips[randomInsecure(0, len(best.tips)-1)]
 
 	return selected, best.count, nil
 }
