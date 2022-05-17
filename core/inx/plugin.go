@@ -10,11 +10,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/gohornet/hornet/pkg/shutdown"
-	"github.com/gohornet/inx-coordinator/pkg/daemon"
-	"github.com/gohornet/inx-coordinator/pkg/nodebridge"
-	"github.com/gohornet/inx-coordinator/plugins/migrator"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/configuration"
+	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
+	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
 	inx "github.com/iotaledger/inx/go"
 )
 
@@ -76,10 +75,9 @@ func provide(c *dig.Container) error {
 	}
 
 	if err := c.Provide(func(client inx.INXClient) (*nodebridge.NodeBridge, error) {
-		migrationsEnabled := !CoreComponent.App.IsPluginSkipped(migrator.Plugin)
 		return nodebridge.NewNodeBridge(CoreComponent.Daemon().ContextStopped(),
 			client,
-			migrationsEnabled,
+			false,
 			CoreComponent.Logger())
 	}); err != nil {
 		return err

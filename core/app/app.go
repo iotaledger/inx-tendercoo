@@ -3,18 +3,17 @@ package app
 import (
 	"github.com/gohornet/hornet/core/gracefulshutdown"
 	"github.com/gohornet/hornet/plugins/profiling"
-	"github.com/gohornet/inx-coordinator/core/coordinator"
-	"github.com/gohornet/inx-coordinator/core/inx"
-	"github.com/gohornet/inx-coordinator/plugins/migrator"
 	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/inx-tendercoo/core/decoo"
+	"github.com/iotaledger/inx-tendercoo/core/inx"
 )
 
 var (
 	// Name of the app.
-	Name = "inx-coordinator"
+	Name = "inx-tendercoo"
 
 	// Version of the app.
-	Version = "0.3.1"
+	Version = "0.0.1"
 )
 
 func App() *app.App {
@@ -22,13 +21,11 @@ func App() *app.App {
 		app.WithInitComponent(InitComponent),
 		app.WithCoreComponents([]*app.CoreComponent{
 			inx.CoreComponent,
-			coordinator.CoreComponent,
+			decoo.CoreComponent,
 			gracefulshutdown.CoreComponent,
 		}...),
 		app.WithPlugins([]*app.Plugin{
-			migrator.Plugin,
 			profiling.Plugin,
-			//prometheus.Plugin,
 		}...),
 	)
 }

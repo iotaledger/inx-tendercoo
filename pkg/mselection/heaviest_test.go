@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/gohornet/hornet/pkg/model/hornet"
-	"github.com/gohornet/inx-coordinator/pkg/utils"
+	"github.com/iotaledger/inx-tendercoo/pkg/utils"
 	"github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )

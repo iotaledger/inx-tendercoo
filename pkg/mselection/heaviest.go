@@ -3,14 +3,14 @@ package mselection
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/pkg/errors"
 
 	"github.com/gohornet/hornet/pkg/model/hornet"
-	"github.com/gohornet/inx-coordinator/pkg/utils"
+	"github.com/iotaledger/inx-tendercoo/pkg/utils"
 	inx "github.com/iotaledger/inx/go"
 )
 

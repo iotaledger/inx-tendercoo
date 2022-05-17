@@ -1,0 +1,47 @@
+syntax = "proto3";
+package tendermint;
+
+option go_package = "github.com/iotaledger/tendercoo/proto/tendermint";
+
+// TxRaw contains a signed transaction essence.
+message TxRaw {
+  // raw bytes of the transaction essence
+  bytes essence = 1;
+  // plain Ed25519 public key of the issuer
+  bytes public_key = 2;
+  // plain Ed25519 signature of essence
+  bytes signature = 3;
+}
+
+// Parent represents a milestone parent proposal.
+message Parent {
+  // index of the corresponding milestone to prevent replays
+  uint32 index = 1;
+  // message ID of the proposed message
+  bytes message_id = 2;
+}
+
+// Proof that a certain pre-milestone has been received.
+message Proof {
+  // index of the corresponding milestone to prevent replays
+  uint32 index = 1;
+  // message ID of the pre-milestone
+  bytes parent_id = 2;
+}
+
+// PartialSignature of a given milestone.
+message PartialSignature {
+  // index of the corresponding pre-milestone to prevent replays
+  uint32 index = 1;
+  // plain Ed25519 signature of the implicit milestone essence
+  bytes milestone_signature = 2;
+}
+
+// Essence of a TxRaw.
+message Essence {
+  oneof message {
+    Parent parent = 1;
+    Proof proof = 2;
+    PartialSignature partial_signature = 3;
+  }
+}

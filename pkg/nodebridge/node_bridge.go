@@ -2,22 +2,21 @@ package nodebridge
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/gohornet/hornet/pkg/keymanager"
 	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
-	"github.com/gohornet/inx-coordinator/pkg/coordinator"
-	"github.com/gohornet/inx-coordinator/pkg/utils"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/inx-tendercoo/pkg/utils"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -118,16 +117,16 @@ func (n *NodeBridge) IsNodeSynced() bool {
 	return n.latestMilestone.GetMilestoneIndex() == n.confirmedMilestone.GetMilestoneIndex()
 }
 
-func (n *NodeBridge) LatestMilestone() *coordinator.LatestMilestoneInfo {
+func (n *NodeBridge) LatestMilestone() *LatestMilestoneInfo {
 	n.isSyncedMutex.RLock()
 	defer n.isSyncedMutex.RUnlock()
-	return &coordinator.LatestMilestoneInfo{
+	return &LatestMilestoneInfo{
 		Index:     milestone.Index(n.latestMilestone.GetMilestoneIndex()),
 		Timestamp: n.latestMilestone.GetMilestoneTimestamp(),
 	}
 }
 
-func (n *NodeBridge) LatestTreasuryOutput() (*coordinator.LatestTreasuryOutput, error) {
+func (n *NodeBridge) LatestTreasuryOutput() (*LatestTreasuryOutput, error) {
 	n.treasuryOutputMutex.RLock()
 	defer n.treasuryOutputMutex.RUnlock()
 
@@ -135,13 +134,13 @@ func (n *NodeBridge) LatestTreasuryOutput() (*coordinator.LatestTreasuryOutput, 
 		return nil, errors.New("haven't received any treasury outputs yet")
 	}
 
-	return &coordinator.LatestTreasuryOutput{
+	return &LatestTreasuryOutput{
 		MilestoneID: n.latestTreasuryOutput.UnwrapMilestoneID(),
 		Amount:      n.latestTreasuryOutput.GetAmount(),
 	}, nil
 }
 
-func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex milestone.Index, msTimestamp uint32, parents hornet.MessageIDs, previousMilestoneId iotago.MilestoneID) (*coordinator.MilestoneMerkleRoots, error) {
+func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex milestone.Index, msTimestamp uint32, parents hornet.MessageIDs, previousMilestoneId iotago.MilestoneID) (*MilestoneMerkleRoots, error) {
 	req := &inx.WhiteFlagRequest{
 		MilestoneIndex:      uint32(msIndex),
 		MilestoneTimestamp:  msTimestamp,
@@ -154,7 +153,7 @@ func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex mileston
 		return nil, err
 	}
 
-	proof := &coordinator.MilestoneMerkleRoots{
+	proof := &MilestoneMerkleRoots{
 		ConfirmedMerkleRoot: iotago.MilestoneMerkleProof{},
 		AppliedMerkleRoot:   iotago.MilestoneMerkleProof{},
 	}
@@ -309,12 +308,9 @@ func (n *NodeBridge) RegisterMessageSolidEvent(ctx context.Context, messageID io
 	messageSolidChan := n.tangleListener.RegisterMessageSolidEvent(messageID)
 
 	// check if the message is already solid
-	metadata, err := n.MessageMetadata(ctx, messageID)
-	if err == nil {
-		if metadata.Solid {
-			// trigger the sync event, because the message is already solid
-			n.tangleListener.processSolidMessage(metadata)
-		}
+	if metadata, err := n.MessageMetadata(ctx, messageID); err == nil && metadata.Solid {
+		// trigger the sync event, because the message is already solid
+		n.tangleListener.processSolidMessage(metadata)
 	}
 
 	return messageSolidChan
