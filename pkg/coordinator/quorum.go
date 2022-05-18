@@ -11,8 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/gohornet/hornet/pkg/common"
-	"github.com/gohornet/hornet/pkg/model/hornet"
-	"github.com/gohornet/hornet/pkg/model/milestone"
 	"github.com/iotaledger/hive.go/syncutils"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/nodeclient"
@@ -123,9 +121,9 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 	wg *sync.WaitGroup,
 	quorumDoneChan chan struct{},
 	quorumErrChan chan error,
-	index milestone.Index,
+	index uint32,
 	timestamp uint32,
-	parents hornet.MessageIDs,
+	parents iotago.BlockIDs,
 	previousMilestoneID iotago.MilestoneID,
 	onGroupEntryError func(groupName string, entry *quorumGroupEntry, err error)) {
 	// mark the group as done at the end
@@ -144,7 +142,7 @@ func (q *quorum) checkMerkleTreeHashQuorumGroup(cooMerkleProof *MilestoneMerkleR
 		go func(entry *quorumGroupEntry, nodeResultChan chan *nodeclient.ComputeWhiteFlagMutationsResponse, nodeErrorChan chan error) {
 			ts := time.Now()
 
-			response, err := entry.api.ComputeWhiteFlagMutations(ctx, uint32(index), timestamp, parents.ToSliceOfArrays(), previousMilestoneID)
+			response, err := entry.api.ComputeWhiteFlagMutations(ctx, index, timestamp, parents, previousMilestoneID)
 
 			// set the stats for the node
 			entry.stats.ResponseTimeSeconds = time.Since(ts).Seconds()
@@ -176,7 +174,7 @@ QuorumLoop:
 
 		case nodeWhiteFlagResponse := <-nodeResultChan:
 			if cooMerkleProof.AppliedMerkleRoot != nodeWhiteFlagResponse.AppliedMerkleRoot ||
-				cooMerkleProof.ConfirmedMerkleRoot != nodeWhiteFlagResponse.ConfirmedMerkleRoot {
+				cooMerkleProof.InclusionMerkleRoot != nodeWhiteFlagResponse.InclusionMerkleRoot {
 				// mismatch of the merkle tree hash of the node => critical error
 				quorumErrChan <- common.CriticalError(ErrQuorumMerkleTreeHashMismatch)
 				return
@@ -200,9 +198,9 @@ QuorumLoop:
 // If no node of a certain group answers, a non-critical error is returned.
 // If one of the nodes returns a different hash, a critical error is returned.
 func (q *quorum) checkMerkleTreeHash(cooMerkleProof *MilestoneMerkleRoots,
-	index milestone.Index,
+	index uint32,
 	timestamp uint32,
-	parents hornet.MessageIDs,
+	parents iotago.BlockIDs,
 	previousMilestoneID iotago.MilestoneID,
 	onGroupEntryError func(groupName string, entry *quorumGroupEntry, err error)) error {
 	q.quorumStatsLock.Lock()

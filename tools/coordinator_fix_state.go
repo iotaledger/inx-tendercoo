@@ -113,7 +113,7 @@ func coordinatorFixStateFile(args []string) error {
 	// state of the coordinator holds information about the last issued milestones.
 	state := &coordinator.State{
 		LatestMilestoneIndex:     ledgerIndex,
-		LatestMilestoneMessageID: cachedMilestone.Milestone().MessageID,
+		LatestMilestoneBlockID: cachedMilestone.Milestone().BlockID,
 		LatestMilestoneTime:      cachedMilestone.Milestone().Timestamp,
 	}
 

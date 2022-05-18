@@ -12,10 +12,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/gohornet/hornet/pkg/keymanager"
-	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/gohornet/hornet/pkg/model/milestone"
 	"github.com/gohornet/inx-coordinator/pkg/coordinator"
-	"github.com/gohornet/inx-coordinator/pkg/utils"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
 	inx "github.com/iotaledger/inx/go"
@@ -39,12 +37,12 @@ type NodeBridge struct {
 }
 
 type Events struct {
-	MessageSolid              *events.Event
+	BlockSolid                *events.Event
 	ConfirmedMilestoneChanged *events.Event
 }
 
-func INXMessageMetadataCaller(handler interface{}, params ...interface{}) {
-	handler.(func(metadata *inx.MessageMetadata))(params[0].(*inx.MessageMetadata))
+func INXBlockMetadataCaller(handler interface{}, params ...interface{}) {
+	handler.(func(metadata *inx.BlockMetadata))(params[0].(*inx.BlockMetadata))
 }
 
 func INXMilestoneCaller(handler interface{}, params ...interface{}) {
@@ -74,7 +72,7 @@ func NewNodeBridge(ctx context.Context, client inx.INXClient, enableTreasuryUpda
 		NodeConfig:     nodeConfig,
 		tangleListener: newTangleListener(),
 		Events: &Events{
-			MessageSolid:              events.NewEvent(INXMessageMetadataCaller),
+			BlockSolid:                events.NewEvent(INXBlockMetadataCaller),
 			ConfirmedMilestoneChanged: events.NewEvent(INXMilestoneCaller),
 		},
 		latestMilestone:       nodeStatus.GetLatestMilestone(),
@@ -100,7 +98,7 @@ func (n *NodeBridge) Run(ctx context.Context) {
 	defer cancel()
 	go n.listenToConfirmedMilestone(c, cancel)
 	go n.listenToLatestMilestone(c, cancel)
-	go n.listenToSolidMessages(c, cancel)
+	go n.listenToSolidBlocks(c, cancel)
 	if n.enableTreasuryUpdates {
 		go n.listenToTreasuryUpdates(c, cancel)
 	}
@@ -122,7 +120,7 @@ func (n *NodeBridge) LatestMilestone() *coordinator.LatestMilestoneInfo {
 	n.isSyncedMutex.RLock()
 	defer n.isSyncedMutex.RUnlock()
 	return &coordinator.LatestMilestoneInfo{
-		Index:     milestone.Index(n.latestMilestone.GetMilestoneIndex()),
+		Index:     n.latestMilestone.GetMilestoneIndex(),
 		Timestamp: n.latestMilestone.GetMilestoneTimestamp(),
 	}
 }
@@ -141,11 +139,11 @@ func (n *NodeBridge) LatestTreasuryOutput() (*coordinator.LatestTreasuryOutput, 
 	}, nil
 }
 
-func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex milestone.Index, msTimestamp uint32, parents hornet.MessageIDs, previousMilestoneId iotago.MilestoneID) (*coordinator.MilestoneMerkleRoots, error) {
+func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex uint32, msTimestamp uint32, parents iotago.BlockIDs, previousMilestoneId iotago.MilestoneID) (*coordinator.MilestoneMerkleRoots, error) {
 	req := &inx.WhiteFlagRequest{
-		MilestoneIndex:      uint32(msIndex),
+		MilestoneIndex:      msIndex,
 		MilestoneTimestamp:  msTimestamp,
-		Parents:             utils.INXMessageIDsFromMessageIDs(parents),
+		Parents:             inx.NewBlockIds(parents),
 		PreviousMilestoneId: inx.NewMilestoneId(previousMilestoneId),
 	}
 
@@ -155,54 +153,54 @@ func (n *NodeBridge) ComputeMerkleTreeHash(ctx context.Context, msIndex mileston
 	}
 
 	proof := &coordinator.MilestoneMerkleRoots{
-		ConfirmedMerkleRoot: iotago.MilestoneMerkleProof{},
+		InclusionMerkleRoot: iotago.MilestoneMerkleProof{},
 		AppliedMerkleRoot:   iotago.MilestoneMerkleProof{},
 	}
-	copy(proof.ConfirmedMerkleRoot[:], res.GetMilestoneConfirmedMerkleRoot())
+	copy(proof.InclusionMerkleRoot[:], res.GetMilestoneInclusionMerkleRoot())
 	copy(proof.AppliedMerkleRoot[:], res.GetMilestoneAppliedMerkleRoot())
 
 	return proof, nil
 }
 
-func (n *NodeBridge) EmitMessage(ctx context.Context, message *iotago.Message) (iotago.MessageID, error) {
+func (n *NodeBridge) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {
 
-	msg, err := inx.WrapMessage(message)
+	blk, err := inx.WrapBlock(block)
 	if err != nil {
-		return iotago.MessageID{}, err
+		return iotago.BlockID{}, err
 	}
 
-	response, err := n.Client.SubmitMessage(ctx, msg)
+	response, err := n.Client.SubmitBlock(ctx, blk)
 	if err != nil {
-		return iotago.MessageID{}, err
+		return iotago.BlockID{}, err
 	}
 
 	return response.Unwrap(), nil
 }
 
-func (n *NodeBridge) MessageMetadata(ctx context.Context, messageID iotago.MessageID) (*inx.MessageMetadata, error) {
-	return n.Client.ReadMessageMetadata(ctx, inx.NewMessageId(messageID))
+func (n *NodeBridge) BlockMetadata(ctx context.Context, blockID iotago.BlockID) (*inx.BlockMetadata, error) {
+	return n.Client.ReadBlockMetadata(ctx, inx.NewBlockId(blockID))
 }
 
-func (n *NodeBridge) listenToSolidMessages(ctx context.Context, cancel context.CancelFunc) error {
+func (n *NodeBridge) listenToSolidBlocks(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
-	filter := &inx.MessageFilter{}
-	stream, err := n.Client.ListenToSolidMessages(ctx, filter)
+	filter := &inx.BlockFilter{}
+	stream, err := n.Client.ListenToSolidBlocks(ctx, filter)
 	if err != nil {
 		return err
 	}
 	for {
-		messageMetadata, err := stream.Recv()
+		metadata, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF || status.Code(err) == codes.Canceled {
 				break
 			}
-			n.Logger.Errorf("listenToSolidMessages: %s", err.Error())
+			n.Logger.Errorf("listenToSolidBlocks: %s", err.Error())
 			break
 		}
 		if ctx.Err() != nil {
 			break
 		}
-		n.processSolidMessage(messageMetadata)
+		n.processSolidBlock(metadata)
 	}
 	return nil
 }
@@ -276,9 +274,9 @@ func (n *NodeBridge) listenToTreasuryUpdates(ctx context.Context, cancel context
 	return nil
 }
 
-func (n *NodeBridge) processSolidMessage(metadata *inx.MessageMetadata) {
-	n.tangleListener.processSolidMessage(metadata)
-	n.Events.MessageSolid.Trigger(metadata)
+func (n *NodeBridge) processSolidBlock(metadata *inx.BlockMetadata) {
+	n.tangleListener.processSolidBlock(metadata)
+	n.Events.BlockSolid.Trigger(metadata)
 }
 
 func (n *NodeBridge) processLatestMilestone(ms *inx.Milestone) {
@@ -305,29 +303,29 @@ func (n *NodeBridge) processTreasuryUpdate(update *inx.TreasuryUpdate) {
 	n.latestTreasuryOutput = created
 }
 
-func (n *NodeBridge) RegisterMessageSolidEvent(ctx context.Context, messageID iotago.MessageID) chan struct{} {
-	messageSolidChan := n.tangleListener.RegisterMessageSolidEvent(messageID)
+func (n *NodeBridge) RegisterBlockSolidEvent(ctx context.Context, blockID iotago.BlockID) chan struct{} {
+	blockSolidChan := n.tangleListener.RegisterBlockSolidEvent(blockID)
 
-	// check if the message is already solid
-	metadata, err := n.MessageMetadata(ctx, messageID)
+	// check if the block is already solid
+	metadata, err := n.BlockMetadata(ctx, blockID)
 	if err == nil {
 		if metadata.Solid {
-			// trigger the sync event, because the message is already solid
-			n.tangleListener.processSolidMessage(metadata)
+			// trigger the sync event, because the block is already solid
+			n.tangleListener.processSolidBlock(metadata)
 		}
 	}
 
-	return messageSolidChan
+	return blockSolidChan
 }
 
-func (n *NodeBridge) DeregisterMessageSolidEvent(messageID iotago.MessageID) {
-	n.tangleListener.DeregisterMessageSolidEvent(messageID)
+func (n *NodeBridge) DeregisterBlockSolidEvent(blockID iotago.BlockID) {
+	n.tangleListener.DeregisterBlockSolidEvent(blockID)
 }
 
-func (n *NodeBridge) RegisterMilestoneConfirmedEvent(msIndex milestone.Index) chan struct{} {
+func (n *NodeBridge) RegisterMilestoneConfirmedEvent(msIndex uint32) chan struct{} {
 	return n.tangleListener.RegisterMilestoneConfirmedEvent(msIndex)
 }
 
-func (n *NodeBridge) DeregisterMilestoneConfirmedEvent(msIndex milestone.Index) {
+func (n *NodeBridge) DeregisterMilestoneConfirmedEvent(msIndex uint32) {
 	n.tangleListener.DeregisterMilestoneConfirmedEvent(msIndex)
 }

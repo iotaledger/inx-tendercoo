@@ -1,19 +1,18 @@
 package inx
 
 import (
-	flag "github.com/spf13/pflag"
-	
 	"github.com/iotaledger/hive.go/app"
 )
 
-const (
-	// CfgINXAddress the INX address to which to connect to.
-	CfgINXAddress = "inx.address"
-)
+type ParametersINX struct {
+	Address string `default:"localhost:9029" usage:"the INX address to which to connect to"`
+}
+
+var ParamsINX = &ParametersINX{}
 
 var params = &app.ComponentParams{
-	Params: func(fs *flag.FlagSet) {
-		fs.String(CfgINXAddress, "localhost:9029", "the INX address to which to connect to")
+	Params: map[string]any{
+		"inx": ParamsINX,
 	},
 	Masked: nil,
 }

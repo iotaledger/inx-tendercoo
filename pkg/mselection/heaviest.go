@@ -9,9 +9,8 @@ import (
 	"github.com/bits-and-blooms/bitset"
 	"github.com/pkg/errors"
 
-	"github.com/gohornet/hornet/pkg/model/hornet"
-	"github.com/gohornet/inx-coordinator/pkg/utils"
 	inx "github.com/iotaledger/inx/go"
+	iotago "github.com/iotaledger/iota.go/v3"
 )
 
 var (
@@ -23,51 +22,51 @@ var (
 type HeaviestSelector struct {
 	sync.Mutex
 
-	// the minimum threshold of unreferenced messages in the heaviest branch for milestone tipselection
+	// the minimum threshold of unreferenced blocks in the heaviest branch for milestone tipselection
 	// if the value falls below that threshold, no more heaviest branch tips are picked
-	minHeaviestBranchUnreferencedMessagesThreshold int
-	// the maximum amount of checkpoint messages with heaviest branch tips that are picked
-	// if the heaviest branch is not below "UnreferencedMessagesThreshold" before
+	minHeaviestBranchUnreferencedBlocksThreshold int
+	// the maximum amount of checkpoint blocks with heaviest branch tips that are picked
+	// if the heaviest branch is not below "UnreferencedBlocksThreshold" before
 	maxHeaviestBranchTipsPerCheckpoint int
-	// the amount of checkpoint messages with random tips that are picked if a checkpoint is issued and at least
+	// the amount of checkpoint blocks with random tips that are picked if a checkpoint is issued and at least
 	// one heaviest branch tip was found, otherwise no random tips will be picked
 	randomTipsPerCheckpoint int
 	// the maximum duration to select the heaviest branch tips
 	heaviestBranchSelectionTimeout time.Duration
-	// map of all tracked messages
-	trackedMessages map[string]*trackedMessage
+	// map of all tracked blocks
+	trackedBlocks map[iotago.BlockID]*trackedBlock
 	// list of available tips
 	tips *list.List
 }
 
-type trackedMessage struct {
-	messageID hornet.MessageID // message ID of the corresponding message
-	tip       *list.Element    // pointer to the element in the tip list
-	refs      *bitset.BitSet   // BitSet of all the referenced messages
+type trackedBlock struct {
+	blockID iotago.BlockID // block ID of the corresponding block
+	tip     *list.Element  // pointer to the element in the tip list
+	refs    *bitset.BitSet // BitSet of all the referenced blocks
 }
 
-type trackedMessagesList struct {
-	msgs map[string]*trackedMessage
+type trackedBlocksList struct {
+	blocks map[iotago.BlockID]*trackedBlock
 }
 
-// Len returns the length of the inner msgs slice.
-func (il *trackedMessagesList) Len() int {
-	return len(il.msgs)
+// Len returns the length of the inner blocks slice.
+func (il *trackedBlocksList) Len() int {
+	return len(il.blocks)
 }
 
-// randomTip selects a random tip item from the trackedMessagesList.
-func (il *trackedMessagesList) randomTip() (*trackedMessage, error) {
-	if len(il.msgs) == 0 {
+// randomTip selects a random tip item from the trackedBlocksList.
+func (il *trackedBlocksList) randomTip() (*trackedBlock, error) {
+	if len(il.blocks) == 0 {
 		return nil, ErrNoTipsAvailable
 	}
 
-	randomMsgIndex := randomInsecure(0, len(il.msgs)-1)
+	randomBlockIndex := randomInsecure(0, len(il.blocks)-1)
 
-	for _, tip := range il.msgs {
-		randomMsgIndex--
+	for _, tip := range il.blocks {
+		randomBlockIndex--
 
-		// if randomMsgIndex is below zero, we return the given tip
-		if randomMsgIndex < 0 {
+		// if randomBlockIndex is below zero, we return the given tip
+		if randomBlockIndex < 0 {
 			return tip, nil
 		}
 	}
@@ -76,71 +75,71 @@ func (il *trackedMessagesList) randomTip() (*trackedMessage, error) {
 }
 
 // referenceTip removes the tip and set all bits of all referenced
-// messages of the tip in all existing tips to zero.
+// blocks of the tip in all existing tips to zero.
 // this way we can track which parts of the cone would already be referenced by this tip, and
 // correctly calculate the weight of the remaining tips.
-func (il *trackedMessagesList) referenceTip(tip *trackedMessage) {
+func (il *trackedBlocksList) referenceTip(tip *trackedBlock) {
 
 	il.removeTip(tip)
 
-	// set all bits of all referenced messages in all existing tips to zero
-	for _, otherTip := range il.msgs {
+	// set all bits of all referenced blocks in all existing tips to zero
+	for _, otherTip := range il.blocks {
 		otherTip.refs.InPlaceDifference(tip.refs)
 	}
 }
 
 // removeTip removes the tip from the map.
-func (il *trackedMessagesList) removeTip(tip *trackedMessage) {
-	delete(il.msgs, tip.messageID.ToMapKey())
+func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
+	delete(il.blocks, tip.blockID)
 }
 
 // New creates a new HeaviestSelector instance.
-func New(minHeaviestBranchUnreferencedMessagesThreshold int, maxHeaviestBranchTipsPerCheckpoint int, randomTipsPerCheckpoint int, heaviestBranchSelectionTimeout time.Duration) *HeaviestSelector {
+func New(minHeaviestBranchUnreferencedBlocksThreshold int, maxHeaviestBranchTipsPerCheckpoint int, randomTipsPerCheckpoint int, heaviestBranchSelectionTimeout time.Duration) *HeaviestSelector {
 	s := &HeaviestSelector{
-		minHeaviestBranchUnreferencedMessagesThreshold: minHeaviestBranchUnreferencedMessagesThreshold,
-		maxHeaviestBranchTipsPerCheckpoint:             maxHeaviestBranchTipsPerCheckpoint,
-		randomTipsPerCheckpoint:                        randomTipsPerCheckpoint,
-		heaviestBranchSelectionTimeout:                 heaviestBranchSelectionTimeout,
+		minHeaviestBranchUnreferencedBlocksThreshold: minHeaviestBranchUnreferencedBlocksThreshold,
+		maxHeaviestBranchTipsPerCheckpoint:           maxHeaviestBranchTipsPerCheckpoint,
+		randomTipsPerCheckpoint:                      randomTipsPerCheckpoint,
+		heaviestBranchSelectionTimeout:               heaviestBranchSelectionTimeout,
 	}
 	s.Reset()
 	return s
 }
 
-// Reset resets the tracked messages map and tips list of s.
+// Reset resets the tracked blocks map and tips list of s.
 func (s *HeaviestSelector) Reset() {
 	s.Lock()
 	defer s.Unlock()
 
 	// create an empty map
-	s.trackedMessages = make(map[string]*trackedMessage)
+	s.trackedBlocks = make(map[iotago.BlockID]*trackedBlock)
 
 	// create an empty list
 	s.tips = list.New()
 }
 
 // selectTip selects a tip to be used for the next checkpoint.
-// it returns a tip, confirming the most messages in the future cone,
-// and the amount of referenced messages of this tip, that were not referenced by previously chosen tips.
-func (s *HeaviestSelector) selectTip(tipsList *trackedMessagesList) (*trackedMessage, uint, error) {
+// it returns a tip, confirming the most blocks in the future cone,
+// and the amount of referenced blocks of this tip, that were not referenced by previously chosen tips.
+func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock, uint, error) {
 
 	if tipsList.Len() == 0 {
 		return nil, 0, ErrNoTipsAvailable
 	}
 
 	var best = struct {
-		tips  []*trackedMessage
+		tips  []*trackedBlock
 		count uint
 	}{
-		tips:  []*trackedMessage{},
+		tips:  []*trackedBlock{},
 		count: 0,
 	}
 
-	// loop through all tips and find the one with the most referenced messages
-	for _, tip := range tipsList.msgs {
+	// loop through all tips and find the one with the most referenced blocks
+	for _, tip := range tipsList.blocks {
 		c := tip.refs.Count()
 		if c > best.count {
 			// tip with heavier branch found
-			best.tips = []*trackedMessage{
+			best.tips = []*trackedBlock{
 				tip,
 			}
 			best.count = c
@@ -160,19 +159,19 @@ func (s *HeaviestSelector) selectTip(tipsList *trackedMessagesList) (*trackedMes
 	return selected, best.count, nil
 }
 
-// SelectTips tries to collect tips that confirm the most recent messages since the last reset of the selector.
-// best tips are determined by counting the referenced messages (heaviest branches) and by "removing" the
-// messages of the referenced cone of the already chosen tips in the bitsets of the available tips.
+// SelectTips tries to collect tips that confirm the most recent blocks since the last reset of the selector.
+// best tips are determined by counting the referenced blocks (heaviest branches) and by "removing" the
+// blocks of the referenced cone of the already chosen tips in the bitsets of the available tips.
 // only tips are considered that were present at the beginning of the SelectTips call,
 // to prevent attackers from creating heavier branches while we are searching the best tips.
 // "maxHeaviestBranchTipsPerCheckpoint" is the amount of tips that are collected if
-// the current best tip is not below "UnreferencedMessagesThreshold" before.
+// the current best tip is not below "UnreferencedBlocksThreshold" before.
 // a minimum amount of selected tips can be enforced, even if none of the heaviest branches matches the
-// "minHeaviestBranchUnreferencedMessagesThreshold" criteria.
+// "minHeaviestBranchUnreferencedBlocksThreshold" criteria.
 // if at least one heaviest branch tip was found, "randomTipsPerCheckpoint" random tips are added
 // to add some additional randomness to prevent parasite chain attacks.
 // the selection is canceled after a fixed deadline. in this case, it returns the current collected tips.
-func (s *HeaviestSelector) SelectTips(minRequiredTips int) (hornet.MessageIDs, error) {
+func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
 
 	// create a working list with the current tips to release the lock to allow faster iteration
 	// and to get a frozen view of the tangle, so an attacker can't
@@ -185,7 +184,7 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (hornet.MessageIDs, e
 		return nil, ErrNoTipsAvailable
 	}
 
-	var tips hornet.MessageIDs
+	var tips iotago.BlockIDs
 
 	// run the tip selection for at most 0.1s to keep the view on the tangle recent; this should be plenty
 	ctx, cancel := context.WithTimeout(context.Background(), s.heaviestBranchSelectionTimeout)
@@ -206,14 +205,14 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (hornet.MessageIDs, e
 			break
 		}
 
-		if (len(tips) > minRequiredTips) && ((count < uint(s.minHeaviestBranchUnreferencedMessagesThreshold)) || deadlineExceeded) {
-			// minimum amount of tips reached and the heaviest tips do not confirm enough messages or the deadline was exceeded
+		if (len(tips) > minRequiredTips) && ((count < uint(s.minHeaviestBranchUnreferencedBlocksThreshold)) || deadlineExceeded) {
+			// minimum amount of tips reached and the heaviest tips do not confirm enough blocks or the deadline was exceeded
 			// => no need to collect more
 			break
 		}
 
 		tipsList.referenceTip(tip)
-		tips = append(tips, tip.messageID)
+		tips = append(tips, tip.blockID)
 	}
 
 	if len(tips) == 0 {
@@ -228,7 +227,7 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (hornet.MessageIDs, e
 		}
 
 		tipsList.referenceTip(item)
-		tips = append(tips, item.messageID)
+		tips = append(tips, item.blockID)
 	}
 
 	// reset the whole HeaviestSelector if valid tips were found
@@ -237,24 +236,24 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (hornet.MessageIDs, e
 	return tips, nil
 }
 
-// OnNewSolidMessage adds a new message to be processed by s.
-// The message must be solid and OnNewSolidMessage must be called in the order of solidification.
-// The message must also not be below max depth.
-func (s *HeaviestSelector) OnNewSolidMessage(msgMeta *inx.MessageMetadata) (trackedMessagesCount int) {
+// OnNewSolidBlock adds a new block to be processed by s.
+// The block must be solid and OnNewSolidBlock must be called in the order of solidification.
+// The block must also not be below max depth.
+func (s *HeaviestSelector) OnNewSolidBlock(blockMeta *inx.BlockMetadata) (trackedBlocksCount int) {
 	s.Lock()
 	defer s.Unlock()
 
-	messageID := hornet.MessageIDFromArray(msgMeta.UnwrapMessageID())
-	parents := utils.MessageIDsFromINXMessageIDs(msgMeta.GetParents())
+	blockID := blockMeta.UnwrapBlockID()
+	parents := blockMeta.UnwrapParents()
 
-	// filter duplicate messages
-	if _, contains := s.trackedMessages[messageID.ToMapKey()]; contains {
+	// filter duplicate blocks
+	if _, contains := s.trackedBlocks[blockID]; contains {
 		return
 	}
 
-	parentItems := []*trackedMessage{}
+	parentItems := []*trackedBlock{}
 	for _, parent := range parents {
-		parentItem := s.trackedMessages[parent.ToMapKey()]
+		parentItem := s.trackedBlocks[parent]
 		if parentItem == nil {
 			continue
 		}
@@ -262,17 +261,17 @@ func (s *HeaviestSelector) OnNewSolidMessage(msgMeta *inx.MessageMetadata) (trac
 		parentItems = append(parentItems, parentItem)
 	}
 
-	// compute the referenced messages
+	// compute the referenced blocks
 	// all the known children in the HeaviestSelector are represented by a unique bit in a bitset.
 	// if a new child is added, we expand the bitset by 1 bit and store the Union of the bitsets
 	// of the parents for this child, to know which parts of the cone are referenced by this child.
-	idx := uint(len(s.trackedMessages))
-	it := &trackedMessage{messageID: messageID, refs: bitset.New(idx + 1).Set(idx)}
+	idx := uint(len(s.trackedBlocks))
+	it := &trackedBlock{blockID: blockID, refs: bitset.New(idx + 1).Set(idx)}
 
 	for _, parentItem := range parentItems {
 		it.refs.InPlaceUnion(parentItem.refs)
 	}
-	s.trackedMessages[it.messageID.ToMapKey()] = it
+	s.trackedBlocks[it.blockID] = it
 
 	// update tips
 	for _, parentItem := range parentItems {
@@ -281,11 +280,11 @@ func (s *HeaviestSelector) OnNewSolidMessage(msgMeta *inx.MessageMetadata) (trac
 
 	it.tip = s.tips.PushBack(it)
 
-	return s.TrackedMessagesCount()
+	return s.TrackedBlocksCount()
 }
 
 // removeTip removes the tip item from s.
-func (s *HeaviestSelector) removeTip(it *trackedMessage) {
+func (s *HeaviestSelector) removeTip(it *trackedBlock) {
 	if it == nil || it.tip == nil {
 		return
 	}
@@ -294,19 +293,19 @@ func (s *HeaviestSelector) removeTip(it *trackedMessage) {
 }
 
 // tipsToList returns a new list containing the current tips.
-func (s *HeaviestSelector) tipsToList() *trackedMessagesList {
+func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 	s.Lock()
 	defer s.Unlock()
 
-	result := make(map[string]*trackedMessage)
+	result := make(map[iotago.BlockID]*trackedBlock)
 	for e := s.tips.Front(); e != nil; e = e.Next() {
-		tip := e.Value.(*trackedMessage)
-		result[tip.messageID.ToMapKey()] = tip
+		tip := e.Value.(*trackedBlock)
+		result[tip.blockID] = tip
 	}
-	return &trackedMessagesList{msgs: result}
+	return &trackedBlocksList{blocks: result}
 }
 
-// TrackedMessagesCount returns the amount of known messages.
-func (s *HeaviestSelector) TrackedMessagesCount() (trackedMessagesCount int) {
-	return len(s.trackedMessages)
+// TrackedBlocksCount returns the amount of known blocks.
+func (s *HeaviestSelector) TrackedBlocksCount() (trackedBlocksCount int) {
+	return len(s.trackedBlocks)
 }
