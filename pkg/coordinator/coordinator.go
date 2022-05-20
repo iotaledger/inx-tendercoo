@@ -417,7 +417,7 @@ func (coo *Coordinator) Bootstrap() (iotago.BlockID, error) {
 
 	if !coo.bootstrapped {
 		// create first milestone to bootstrap the network
-		// only one parent references the last known milestone or NullMessageID if startIndex = 1 (see InitState)
+		// only one parent references the last known milestone or NullBlockID if startIndex = 1 (see InitState)
 		err := coo.createAndSendMilestone(iotago.BlockIDs{coo.state.LatestMilestoneBlockID}, coo.state.LatestMilestoneIndex+1, coo.state.LatestMilestoneID)
 		if err != nil {
 			// creating milestone failed => always a critical error at bootstrap

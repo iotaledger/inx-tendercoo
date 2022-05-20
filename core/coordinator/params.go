@@ -15,7 +15,7 @@ type Quorum struct {
 
 type ParametersCoordinator struct {
 	StateFilePath string        `default:"coordinator.state" usage:"the path to the state file of the coordinator"`
-	Interval      time.Duration `default:"10s" usage:"the interval milestones are issued"`
+	Interval      time.Duration `default:"5s" usage:"the interval milestones are issued"`
 	Signing       struct {
 		Provider      string        `default:"local" usage:"the signing provider the coordinator uses to sign a milestone (local/remote)"`
 		RemoteAddress string        `default:"localhost:12345" usage:"the address of the remote signing provider (insecure connection!)"`
