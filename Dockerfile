@@ -1,5 +1,5 @@
 # https://hub.docker.com/_/golang
-FROM golang:1.18-bullseye AS build
+FROM golang:1.18 AS build
 
 # Ensure ca-certificates are up to date
 RUN update-ca-certificates
@@ -19,7 +19,7 @@ RUN go mod download
 RUN go mod verify
 
 # Build the binary
-RUN go build -o /app/inx-coordinator -a
+RUN go build -o /app/inx-tendercoo -a
 
 # Copy the assets
 COPY ./config.json /app/config.json
@@ -39,4 +39,4 @@ COPY --chown=nonroot:nonroot --from=build /app /app
 WORKDIR /app
 USER nonroot
 
-ENTRYPOINT ["/app/inx-coordinator"]
+ENTRYPOINT ["/app/inx-tendercoo"]
