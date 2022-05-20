@@ -209,7 +209,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
 		for issuer, msgID := range c.currAppState.ParentByIssuer {
 			// skip duplicates and parents already present in the previous block
-			if _, has := processed[msgID]; has || c.lastAppState.IssuerCountByParent[Key32(msgID)] > 0 {
+			if _, has := processed[msgID]; has || c.lastAppState.IssuerCountByParent[[32]byte(msgID)] > 0 {
 				continue
 			}
 			c.log.Debugw("awaiting parent", "msgID", msgID)

@@ -100,15 +100,10 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
-	validators, err := loadValidatorsFromConfig()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse validators: %w", err)
-	}
-
 	var genesisValidators []tmtypes.GenesisValidator
-	for name, validator := range validators {
+	for name, validator := range ParamsCoordinator.Tendermint.Validators {
 		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
-			PubKey: tmed25519.PubKey(validator.PubKey),
+			PubKey: tmed25519.PubKey(validator.PubKey[:]),
 			Power:  validator.Power,
 			Name:   name,
 		})

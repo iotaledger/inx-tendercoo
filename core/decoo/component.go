@@ -3,11 +3,9 @@ package decoo
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
 	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
 	inx "github.com/iotaledger/inx/go"
@@ -50,43 +49,15 @@ const (
 // ValidatorsConfig defines the config options for one validator.
 // TODO: is there a better way to define multiple validators in the config?
 type ValidatorsConfig struct {
-	PubKey []byte `json:"pubKey" koanf:"pubKey"`
-	Power  int64  `json:"power" koanf:"power"`
-}
-
-// Byte32HexValue holds a 32-byte array. It is used to store values from CLI flags.
-// TODO: do we already have something like this to cleanly parse 32-byte arrays from flags?
-type Byte32HexValue [32]byte
-
-// NewByte32Hex creates a new Byte32HexValue from a reference 32-byte array and a default value.
-func NewByte32Hex(defaultVal [32]byte, p *[32]byte) *Byte32HexValue {
-	copy(p[:], defaultVal[:])
-	return (*Byte32HexValue)(p)
-}
-
-func (v *Byte32HexValue) Type() string { return "byte32Hex" }
-
-func (v *Byte32HexValue) String() string { return hex.EncodeToString(v[:]) }
-
-func (v *Byte32HexValue) Set(val string) error {
-	// pflag always trims string values, so we should do the same
-	trimmed := strings.TrimSpace(val)
-	if l := len(trimmed); l != hex.EncodedLen(len(Byte32HexValue{})) {
-		return fmt.Errorf("invalid length: %d", l)
-	}
-	dec, err := hex.DecodeString(trimmed)
-	if err != nil {
-		return err
-	}
-	copy(v[:], dec)
-	return nil
+	PubKey types.Byte32 `json:"pubKey" koanf:"pubKey"`
+	Power  int64        `json:"power" koanf:"power"`
 }
 
 func init() {
 	flag.BoolVar(bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
 	flag.Uint32Var(startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
-	flag.Var(NewByte32Hex(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
-	flag.Var(NewByte32Hex(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
+	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
+	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
@@ -153,15 +124,10 @@ func provide(c *dig.Container) error {
 		CoreComponent.LogInfo("Providing Coordinator ...")
 		defer CoreComponent.LogInfo("Providing Coordinator ... done")
 
-		validators, err := loadValidatorsFromConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse validators: %w", err)
-		}
-
 		// extract all validator public keys
 		var members []ed25519.PublicKey
-		for _, validator := range validators {
-			members = append(members, validator.PubKey)
+		for _, validator := range ParamsCoordinator.Tendermint.Validators {
+			members = append(members, validator.PubKey[:])
 		}
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 
@@ -414,28 +380,11 @@ func loadEd25519PrivateKeyFromEnvironment(name string) (ed25519.PrivateKey, erro
 	if !exists {
 		return nil, fmt.Errorf("environment variable '%s' not set", name)
 	}
-	var seed Byte32HexValue
+	var seed types.Byte32
 	if err := seed.Set(value); err != nil {
 		return nil, fmt.Errorf("environment variable '%s' contains an invalid private key: %w", name, err)
 	}
 	return ed25519.NewKeyFromSeed(seed[:]), nil
-}
-
-func loadValidatorsFromConfig() (map[string]ValidatorsConfig, error) {
-	validators := map[string]ValidatorsConfig{}
-	for name, validatorConfig := range ParamsCoordinator.Tendermint.Validators {
-		if l := len(validatorConfig.PubKey); l != hex.EncodedLen(ed25519.PublicKeySize) {
-			return nil, fmt.Errorf("invalid key length: %d", l)
-		}
-
-		var err error
-		validatorConfig.PubKey, err = hex.DecodeString(string(validatorConfig.PubKey))
-		if err != nil {
-			return nil, err
-		}
-		validators[name] = validatorConfig
-	}
-	return validators, nil
 }
 
 func fileExists(name string) bool {

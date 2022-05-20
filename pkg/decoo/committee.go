@@ -14,24 +14,32 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 )
 
+type ID = [32]byte
+
 // Committee defines a committee of signers.
 type Committee struct {
 	sk        ed25519.PrivateKey
-	indexByID map[Key32]int
+	indexByID map[ID]int
+}
+
+// IDFromPublicKey returns the ID from a given public key.
+func IDFromPublicKey(publicKey ed25519.PublicKey) (id ID) {
+	copy(id[:], publicKey)
+	return id
 }
 
 // NewCommittee creates a new committee.
 // The private key sk must belong to one member.
 func NewCommittee(sk ed25519.PrivateKey, members ...ed25519.PublicKey) *Committee {
-	ids := make(map[Key32]int, len(members))
+	ids := make(map[ID]int, len(members))
 	for i, member := range members {
-		id := Key32FromBytes(member)
+		id := IDFromPublicKey(member)
 		if _, has := ids[id]; has {
 			panic("duplicate member")
 		}
 		ids[id] = i
 	}
-	id := Key32FromBytes(sk.Public().(ed25519.PublicKey))
+	id := IDFromPublicKey(sk.Public().(ed25519.PublicKey))
 	if _, has := ids[id]; !has {
 		panic("validation: private key not a member")
 	}
@@ -51,15 +59,15 @@ func (v *Committee) PublicKey() ed25519.PublicKey {
 }
 
 // ID returns the ID of the local member.
-func (v *Committee) ID() Key32 {
-	return Key32FromBytes(v.PublicKey())
+func (v *Committee) ID() ID {
+	return IDFromPublicKey(v.PublicKey())
 }
 
 // Members returns a set of all members public keys.
 func (v *Committee) Members() iotago.MilestonePublicKeySet {
 	set := make(iotago.MilestonePublicKeySet, len(v.indexByID))
 	for id := range v.indexByID {
-		set[iotago.MilestonePublicKey(id)] = struct{}{}
+		set[id] = struct{}{}
 	}
 	return set
 }
@@ -70,7 +78,7 @@ func (v *Committee) String() string {
 
 // MemberIndex returns the index of the provided peer.
 // Certain applications require a consecutive number instead of a more cryptic public key.
-func (v *Committee) MemberIndex(id Key32) (int, bool) {
+func (v *Committee) MemberIndex(id ID) (int, bool) {
 	i, has := v.indexByID[id]
 	return i, has
 }
@@ -85,7 +93,7 @@ func (v *Committee) Sign(message []byte) *iotago.Ed25519Signature {
 
 // VerifySingle verifies a single signature from a committee member.
 func (v *Committee) VerifySingle(message []byte, publicKey ed25519.PublicKey, signature []byte) error {
-	if _, has := v.indexByID[Key32FromBytes(publicKey)]; !has {
+	if _, has := v.indexByID[IDFromPublicKey(publicKey)]; !has {
 		return ErrNonApplicablePublicKey
 	}
 	if !ed25519.Verify(publicKey, message, signature) {
