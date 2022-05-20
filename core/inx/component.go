@@ -5,16 +5,13 @@ import (
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"go.uber.org/dig"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/gohornet/hornet/pkg/shutdown"
 	"github.com/iotaledger/hive.go/app"
-	"github.com/iotaledger/hive.go/configuration"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
 	inx "github.com/iotaledger/inx/go"
+	"go.uber.org/dig"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func init() {
@@ -31,7 +28,6 @@ func init() {
 
 type dependencies struct {
 	dig.In
-	AppConfig  *configuration.Configuration `name:"appConfig"`
 	NodeBridge *nodebridge.NodeBridge
 	Connection *grpc.ClientConn
 }
@@ -43,20 +39,14 @@ var (
 
 func provide(c *dig.Container) error {
 
-	type inxDeps struct {
-		dig.In
-		AppConfig       *configuration.Configuration `name:"appConfig"`
-		ShutdownHandler *shutdown.ShutdownHandler
-	}
-
 	type inxDepsOut struct {
 		dig.Out
 		Connection *grpc.ClientConn
 		INXClient  inx.INXClient
 	}
 
-	if err := c.Provide(func(deps inxDeps) (inxDepsOut, error) {
-		conn, err := grpc.Dial(deps.AppConfig.String(CfgINXAddress),
+	if err := c.Provide(func() (inxDepsOut, error) {
+		conn, err := grpc.Dial(ParamsINX.Address,
 			grpc.WithChainUnaryInterceptor(grpc_retry.UnaryClientInterceptor(), grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),

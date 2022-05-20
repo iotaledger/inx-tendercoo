@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iotaledger/hive.go/configuration"
 	"github.com/iotaledger/hive.go/logger"
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
@@ -53,15 +52,15 @@ func NewTenderLogger(log *logger.Logger, l zapcore.Level) TenderLogger {
 	return TenderLogger{log.Desugar().WithOptions(zap.AddCallerSkip(1)).Sugar(), zap.NewAtomicLevelAt(l)}
 }
 
-func loadTendermintConfig(priv ed25519.PrivateKey, appConfig *configuration.Configuration) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
+func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
 	log := CoreComponent.Logger()
 	privKey := tmed25519.PrivKey(priv)
 
-	rootDir := appConfig.String(CfgCoordinatorTendermintRoot)
+	rootDir := ParamsCoordinator.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
 	conf := tmconfig.DefaultValidatorConfig().SetRoot(rootDir)
 
-	conf.Consensus.CreateEmptyBlocks = appConfig.Bool(CfgCoordinatorTendermintCreateEmptyBlocks)
+	conf.Consensus.CreateEmptyBlocks = ParamsCoordinator.Tendermint.CreateEmptyBlocks
 	// TODO: make other Tendermint options configurable
 
 	// private validator
@@ -101,7 +100,7 @@ func loadTendermintConfig(priv ed25519.PrivateKey, appConfig *configuration.Conf
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
-	validators, err := loadValidatorsFromConfig(appConfig)
+	validators, err := loadValidatorsFromConfig()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse validators: %w", err)
 	}
@@ -116,8 +115,8 @@ func loadTendermintConfig(priv ed25519.PrivateKey, appConfig *configuration.Conf
 	}
 
 	gen := &tmtypes.GenesisDoc{
-		GenesisTime:   time.Unix(appConfig.Int64(CfgCoordinatorTendermintGenesisTime), 0),
-		ChainID:       appConfig.String(CfgCoordinatorTendermintChainID),
+		GenesisTime:   time.Unix(ParamsCoordinator.Tendermint.GenesisTime, 0),
+		ChainID:       ParamsCoordinator.Tendermint.ChainID,
 		InitialHeight: 0,
 		Validators:    genesisValidators,
 	}

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
@@ -57,7 +56,7 @@ type State struct {
 	// LastMilestoneID denotes the ID of the previous milestone.
 	LastMilestoneID iotago.MilestoneID
 	// LastMilestoneMsgID denotes the ID of a message containing the previous milestone.
-	LastMilestoneMsgID iotago.MessageID
+	LastMilestoneMsgID iotago.BlockID
 }
 
 // Coordinator is a Tendermint based decentralized coordinator.
@@ -86,7 +85,7 @@ type Coordinator struct {
 // New creates a new Coordinator.
 func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBridge, log *logger.Logger) (*Coordinator, error) {
 	// there must be at least one honest parent in each milestone
-	if committee.T() > iotago.MaxParentsInAMessage-1 {
+	if committee.T() > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
 
@@ -169,7 +168,7 @@ func (c *Coordinator) StateMilestoneIndex() uint32 {
 }
 
 // ProposeParent proposes a parent for the milestone with the given index.
-func (c *Coordinator) ProposeParent(index uint32, msgID hornet.MessageID) error {
+func (c *Coordinator) ProposeParent(index uint32, msgID iotago.BlockID) error {
 	// ignore this request, if the index is in the past
 	if index < c.StateMilestoneIndex() {
 		return ErrIndexBehindAppState
@@ -178,7 +177,7 @@ func (c *Coordinator) ProposeParent(index uint32, msgID hornet.MessageID) error 
 		return ErrNotStarted
 	}
 
-	parent := &tendermint.Parent{Index: index, MessageId: msgID}
+	parent := &tendermint.Parent{Index: index, MessageId: msgID[:]}
 	tx, err := c.marshalTx(parent)
 	if err != nil {
 		panic(err)

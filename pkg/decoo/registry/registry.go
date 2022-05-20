@@ -14,8 +14,8 @@ import (
 var ErrAlreadyRegistered = errors.New("message ID is already registered")
 
 type EventRegisterer interface {
-	RegisterMessageSolidEvent(context.Context, iotago.MessageID) chan struct{}
-	DeregisterMessageSolidEvent(iotago.MessageID)
+	RegisterBlockSolidEvent(context.Context, iotago.BlockID) chan struct{}
+	DeregisterBlockSolidEvent(id iotago.BlockID)
 }
 
 // Registry represents a convenient way to register callbacks when messages become solid.
@@ -26,8 +26,8 @@ type Registry struct {
 	cancel context.CancelFunc
 
 	registerer EventRegisterer
-	registered map[iotago.MessageID]struct{}
-	cleared    map[iotago.MessageID]struct{}
+	registered map[iotago.BlockID]struct{}
+	cleared    map[iotago.BlockID]struct{}
 }
 
 // New creates a new Registry.
@@ -37,8 +37,8 @@ func New(ctx context.Context, registerer EventRegisterer) *Registry {
 		ctx:        ctx,
 		cancel:     cancel,
 		registerer: registerer,
-		registered: map[iotago.MessageID]struct{}{},
-		cleared:    map[iotago.MessageID]struct{}{},
+		registered: map[iotago.BlockID]struct{}{},
+		cleared:    map[iotago.BlockID]struct{}{},
 	}
 }
 
@@ -54,7 +54,7 @@ func (r *Registry) Close() error {
 
 // RegisterCallback registers a callback for when a message with id becomes solid.
 // If another callback for the same ID has already been registered, an error is returned.
-func (r *Registry) RegisterCallback(id iotago.MessageID, f func(iotago.MessageID)) error {
+func (r *Registry) RegisterCallback(id iotago.BlockID, f func(iotago.BlockID)) error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -67,7 +67,7 @@ func (r *Registry) RegisterCallback(id iotago.MessageID, f func(iotago.MessageID
 	r.registered[id] = struct{}{}
 
 	go func() {
-		c := r.registerer.RegisterMessageSolidEvent(r.ctx, id)
+		c := r.registerer.RegisterBlockSolidEvent(r.ctx, id)
 		_ = events.WaitForChannelClosed(r.ctx, c)
 
 		r.Lock()
@@ -89,14 +89,14 @@ func (r *Registry) RegisterCallback(id iotago.MessageID, f func(iotago.MessageID
 }
 
 // DeregisterCallback removes a previously registered callback.
-func (r *Registry) DeregisterCallback(id iotago.MessageID) {
+func (r *Registry) DeregisterCallback(id iotago.BlockID) {
 	r.Lock()
 	defer r.Unlock()
 
 	if _, ok := r.registered[id]; ok {
 		r.cleared[id] = struct{}{}
 		delete(r.registered, id)
-		r.registerer.DeregisterMessageSolidEvent(id)
+		r.registerer.DeregisterBlockSolidEvent(id)
 	}
 }
 
@@ -114,8 +114,8 @@ func (r *Registry) clear() {
 	}
 	r.cleared = r.registered
 	// clear all elements of registered
-	r.registered = map[iotago.MessageID]struct{}{}
+	r.registered = map[iotago.BlockID]struct{}{}
 	for msgID := range r.cleared {
-		r.registerer.DeregisterMessageSolidEvent(msgID)
+		r.registerer.DeregisterBlockSolidEvent(msgID)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"golang.org/x/crypto/blake2b"
@@ -51,7 +50,7 @@ type AppState struct {
 	Timestamp uint32
 
 	// ParentByIssuer contains the proposed parent IDs sorted by the proposers PublicKey.
-	ParentByIssuer map[Key32]iotago.MessageID
+	ParentByIssuer map[Key32]iotago.BlockID
 	// IssuerCountByParent counts the issuers of each parent
 	IssuerCountByParent map[Key32]int
 
@@ -74,7 +73,7 @@ func (a *AppState) UnmarshalBinary(data []byte) error { return json.Unmarshal(da
 func (a *AppState) Reset(state State) {
 	a.State = state
 	a.Timestamp = 0
-	a.ParentByIssuer = map[Key32]iotago.MessageID{}
+	a.ParentByIssuer = map[Key32]iotago.BlockID{}
 	a.IssuerCountByParent = map[Key32]int{}
 	a.ProofsByMsgID = map[Key32]map[Key32]struct{}{}
 	a.Milestone = nil
@@ -86,7 +85,7 @@ func (a *AppState) MilestoneID() iotago.MilestoneID {
 	if err != nil {
 		panic(err)
 	}
-	return *id
+	return id
 }
 
 // Hash returns the BLAKE2b-256 hash of the state.
@@ -105,7 +104,7 @@ func (a *AppState) CheckParent(p *tendermint.Parent) uint32 {
 		return CodeTypeStateError
 	}
 	// the milestone MsgID must have the correct length
-	if len(p.MessageId) != iotago.MessageIDLength {
+	if len(p.MessageId) != len(iotago.BlockID{}) {
 		return CodeTypeSyntaxError
 	}
 	return CodeTypeOK
@@ -129,7 +128,7 @@ func (a *AppState) DeliverParent(issuer ed25519.PublicKey, p *tendermint.Parent,
 
 	// add the parent to the state
 	msgID := Key32FromBytes(p.GetMessageId())
-	a.ParentByIssuer[issuerKey] = msgID
+	a.ParentByIssuer[issuerKey] = iotago.BlockID(msgID)
 	a.IssuerCountByParent[msgID]++
 	return CodeTypeOK
 }
@@ -144,7 +143,7 @@ func (a *AppState) CheckProof(p *tendermint.Proof) uint32 {
 		return CodeTypeStateError
 	}
 	// the milestone MsgID must have the correct length
-	if len(p.ParentId) != iotago.MessageIDLength {
+	if len(p.ParentId) != len(iotago.BlockID{}) {
 		return CodeTypeSyntaxError
 	}
 	return CodeTypeOK
@@ -161,15 +160,15 @@ func (a *AppState) DeliverProof(issuer ed25519.PublicKey, p *tendermint.Proof, _
 		return CodeTypeStateError
 	}
 	// the referenced message must be a parent
-	msgID := hornet.MessageID(p.ParentId)
-	if a.IssuerCountByParent[Key32FromBytes(msgID)] < 1 {
+	msgID := Key32FromBytes(p.ParentId)
+	if a.IssuerCountByParent[msgID] < 1 {
 		return CodeTypeStateError
 	}
 	// check that the same proof was not issued already
-	proofs := a.ProofsByMsgID[Key32FromBytes(msgID)]
+	proofs := a.ProofsByMsgID[msgID]
 	if proofs == nil {
 		proofs = map[Key32]struct{}{}
-		a.ProofsByMsgID[Key32FromBytes(msgID)] = proofs
+		a.ProofsByMsgID[msgID] = proofs
 	}
 	if _, has := proofs[Key32FromBytes(issuer)]; has {
 		return CodeTypeReplayError

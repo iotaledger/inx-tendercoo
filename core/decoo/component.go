@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/iotaledger/hive.go/app"
-	"github.com/iotaledger/hive.go/configuration"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/hive.go/logger"
@@ -88,8 +85,8 @@ func (v *Byte32HexValue) Set(val string) error {
 func init() {
 	flag.BoolVar(bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
 	flag.Uint32Var(startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
-	flag.Var(NewByte32Hex(iotago.MessageID{}, startMilestoneID), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
-	flag.Var(NewByte32Hex(iotago.MessageID{}, startMilestoneMessageID), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
+	flag.Var(NewByte32Hex(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
+	flag.Var(NewByte32Hex(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
@@ -111,7 +108,7 @@ var (
 	bootstrap               *bool
 	startIndex              *uint32
 	startMilestoneID        *iotago.MilestoneID
-	startMilestoneMessageID *iotago.MessageID
+	startMilestoneMessageID *iotago.BlockID
 
 	// config parameters
 	maxTrackedMessages int
@@ -131,7 +128,6 @@ var (
 
 type dependencies struct {
 	dig.In
-	AppConfig      *configuration.Configuration `name:"appConfig"`
 	NodeBridge     *nodebridge.NodeBridge
 	Selector       *mselection.HeaviestSelector
 	Coordinator    *decoo.Coordinator
@@ -150,7 +146,6 @@ func provide(c *dig.Container) error {
 	// provide the coordinator
 	type coordinatorDeps struct {
 		dig.In
-		AppConfig             *configuration.Configuration `name:"appConfig"`
 		CoordinatorPrivateKey ed25519.PrivateKey
 		NodeBridge            *nodebridge.NodeBridge
 	}
@@ -158,7 +153,7 @@ func provide(c *dig.Container) error {
 		CoreComponent.LogInfo("Providing Coordinator ...")
 		defer CoreComponent.LogInfo("Providing Coordinator ... done")
 
-		validators, err := loadValidatorsFromConfig(deps.AppConfig)
+		validators, err := loadValidatorsFromConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse validators: %w", err)
 		}
@@ -193,7 +188,6 @@ func provide(c *dig.Container) error {
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		AppConfig             *configuration.Configuration `name:"appConfig"`
 		CoordinatorPrivateKey ed25519.PrivateKey
 		Coordinator           *decoo.Coordinator
 	}
@@ -201,13 +195,13 @@ func provide(c *dig.Container) error {
 		CoreComponent.LogInfo("Providing Tendermint ...")
 		defer CoreComponent.LogInfo("Providing Tendermint ... done")
 
-		conf, gen, err := loadTendermintConfig(deps.CoordinatorPrivateKey, deps.AppConfig)
+		conf, gen, err := loadTendermintConfig(deps.CoordinatorPrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 		// use a separate logger for Tendermint
 		log := logger.NewLogger("Tendermint")
-		lvl, err := zapcore.ParseLevel(deps.AppConfig.String(CfgCoordinatorTendermintLogLevel))
+		lvl, err := zapcore.ParseLevel(ParamsCoordinator.Tendermint.LogLevel)
 		if err != nil {
 			return nil, fmt.Errorf("invalid level: %w", err)
 		}
@@ -219,16 +213,12 @@ func provide(c *dig.Container) error {
 	}
 
 	// provide the heaviest branch selection strategy
-	type selectorDeps struct {
-		dig.In
-		AppConfig *configuration.Configuration `name:"appConfig"`
-	}
-	if err := c.Provide(func(deps selectorDeps) *mselection.HeaviestSelector {
+	if err := c.Provide(func() *mselection.HeaviestSelector {
 		return mselection.New(
-			deps.AppConfig.Int(CfgCoordinatorTipselectMinHeaviestBranchUnreferencedMessagesThreshold),
-			deps.AppConfig.Int(CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint),
-			deps.AppConfig.Int(CfgCoordinatorTipselectRandomTipsPerCheckpoint),
-			deps.AppConfig.Duration(CfgCoordinatorTipselectHeaviestBranchSelectionTimeout),
+			ParamsCoordinator.TipSel.MinHeaviestBranchUnreferencedBlocksThreshold,
+			ParamsCoordinator.TipSel.MaxHeaviestBranchTipsPerCheckpoint,
+			ParamsCoordinator.TipSel.RandomTipsPerCheckpoint,
+			ParamsCoordinator.TipSel.HeaviestBranchSelectionTimeout,
 		)
 	}); err != nil {
 		return err
@@ -255,9 +245,6 @@ func processMilestone(inxMilestone *inx.Milestone) {
 }
 
 func configure() error {
-	maxTrackedMessages = deps.AppConfig.Int(CfgCoordinatorMaxTrackedMessages)
-	interval = deps.AppConfig.Duration(CfgCoordinatorInterval)
-
 	trackMessages.Store(true)
 	newMilestoneSignal = make(chan MilestoneInfo, 1)
 	if *bootstrap {
@@ -269,13 +256,13 @@ func configure() error {
 	}
 
 	// pass all new solid messages to the selector and preemptively trigger new milestone when needed
-	onMessageSolid = events.NewClosure(func(metadata *inx.MessageMetadata) {
+	onMessageSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
 		if !trackMessages.Load() || metadata.GetShouldReattach() {
 			return
 		}
 		// add tips to the heaviest branch selector
 		// if there are too many messages, trigger the latest milestone again. This will trigger a new milestone.
-		if trackedMessagesCount := deps.Selector.OnNewSolidMessage(metadata); trackedMessagesCount >= maxTrackedMessages {
+		if trackedMessagesCount := deps.Selector.OnNewSolidBlock(metadata); trackedMessagesCount >= maxTrackedMessages {
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
 			if latestMilestone.TryLock() {
 				defer latestMilestone.Unlock()
@@ -351,7 +338,7 @@ func run() error {
 
 type MilestoneInfo struct {
 	Index          uint32
-	MilestoneMsgID iotago.MessageID
+	MilestoneMsgID iotago.BlockID
 }
 
 func coordinatorLoop(ctx context.Context) {
@@ -379,7 +366,7 @@ func coordinatorLoop(ctx context.Context) {
 			if err != nil {
 				CoreComponent.LogWarnf("failed to select tips: %s", err)
 				// use the previous milestone message as fallback
-				tips = hornet.MessageIDs{info.MilestoneMsgID[:]}
+				tips = iotago.BlockIDs{info.MilestoneMsgID}
 			}
 			// until the actual milestone is received, the job of the tip selector is done
 			trackMessages.Store(false)
@@ -412,12 +399,12 @@ func coordinatorLoop(ctx context.Context) {
 }
 
 func attachEvents() {
-	deps.NodeBridge.Events.MessageSolid.Attach(onMessageSolid)
+	deps.NodeBridge.Events.BlockSolid.Attach(onMessageSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
 }
 
 func detachEvents() {
-	deps.NodeBridge.Events.MessageSolid.Detach(onMessageSolid)
+	deps.NodeBridge.Events.BlockSolid.Detach(onMessageSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
 }
 
@@ -434,15 +421,9 @@ func loadEd25519PrivateKeyFromEnvironment(name string) (ed25519.PrivateKey, erro
 	return ed25519.NewKeyFromSeed(seed[:]), nil
 }
 
-func loadValidatorsFromConfig(config *configuration.Configuration) (map[string]ValidatorsConfig, error) {
+func loadValidatorsFromConfig() (map[string]ValidatorsConfig, error) {
 	validators := map[string]ValidatorsConfig{}
-	for _, name := range config.MapKeys(CfgCoordinatorTendermintValidators) {
-		configKey := CfgCoordinatorTendermintValidators + "." + name
-
-		validatorConfig := ValidatorsConfig{}
-		if err := config.Unmarshal(configKey, &validatorConfig); err != nil {
-			return nil, fmt.Errorf("failed to parse %s: %w", strconv.Quote(configKey), err)
-		}
+	for name, validatorConfig := range ParamsCoordinator.Tendermint.Validators {
 		if l := len(validatorConfig.PubKey); l != hex.EncodedLen(ed25519.PublicKeySize) {
 			return nil, fmt.Errorf("invalid key length: %d", l)
 		}

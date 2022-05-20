@@ -1,13 +1,12 @@
 package nodebridge
 
 import (
-	"github.com/gohornet/hornet/pkg/model/milestone"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
 // LatestMilestoneInfo contains the info of the latest milestone the connected node knows.
 type LatestMilestoneInfo struct {
-	Index       milestone.Index
+	Index       uint32
 	Timestamp   uint32
 	MilestoneID iotago.MilestoneID
 }
@@ -20,8 +19,8 @@ type LatestTreasuryOutput struct {
 
 // MilestoneMerkleRoots contains the merkle roots calculated by whiteflag confirmation.
 type MilestoneMerkleRoots struct {
-	// ConfirmedMerkleRoot is the root of the merkle tree containing the hash of all confirmed messages.
-	ConfirmedMerkleRoot iotago.MilestoneMerkleProof
-	// AppliedMerkleRoot is the root of the merkle tree containing the hash of all include messages that mutate the ledger.
+	// InclusionMerkleRoot is the root of the merkle tree containing the hash of all included blocks.
+	InclusionMerkleRoot iotago.MilestoneMerkleProof
+	// AppliedMerkleRoot is the root of the merkle tree containing the hash of all include blocks that mutate the ledger.
 	AppliedMerkleRoot iotago.MilestoneMerkleProof
 }

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/gohornet/hornet/pkg/model/hornet"
-	"github.com/gohornet/hornet/pkg/model/milestone"
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -130,34 +128,35 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 
 	// collect parents that have sufficient proofs
 	parentWeight := 0
-	var parents hornet.MessageIDs
-	for msgID, preMsProofs := range c.currAppState.ProofsByMsgID {
-		if c.currAppState.IssuerCountByParent[msgID] > 0 && len(preMsProofs) > c.committee.N()/3 {
-			parentWeight += c.currAppState.IssuerCountByParent[msgID]
+	var parents iotago.BlockIDs
+	for msgIDKey, preMsProofs := range c.currAppState.ProofsByMsgID {
+		if c.currAppState.IssuerCountByParent[msgIDKey] > 0 && len(preMsProofs) > c.committee.N()/3 {
+			parentWeight += c.currAppState.IssuerCountByParent[msgIDKey]
+			msgID := iotago.BlockID(msgIDKey)
 			// the last milestone message ID will be added later anyway
 			if msgID != c.currAppState.LastMilestoneMsgID {
-				parents = append(parents, msgID[:])
+				parents = append(parents, msgID)
 			}
 		}
 	}
 
 	// create the final milestone essence, if enough parents have been confirmed
 	if c.currAppState.Milestone == nil && parentWeight > c.committee.N()/3 {
-		if len(parents) > iotago.MaxParentsInAMessage-1 {
-			parents = parents[:iotago.MaxParentsInAMessage-1]
+		if len(parents) > iotago.BlockMaxParents-1 {
+			parents = parents[:iotago.BlockMaxParents-1]
 		}
 		// always add the previous milestone as a parent
-		parents = append(parents, c.currAppState.LastMilestoneMsgID[:])
-		parents = parents.RemoveDupsAndSortByLexicalOrder()
+		parents = append(parents, c.currAppState.LastMilestoneMsgID)
+		parents = parents.RemoveDupsAndSort()
 
 		// compute merkle tree root
-		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), milestone.Index(c.currAppState.CurrentMilestoneIndex), c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
+		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
 
 		// create milestone essence
-		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents.ToSliceOfArrays(), merkleProof.ConfirmedMerkleRoot, merkleProof.AppliedMerkleRoot)
+		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, merkleProof.InclusionMerkleRoot, merkleProof.AppliedMerkleRoot)
 
 		// proofs are no longer needed for this milestone
 		c.currAppState.ProofsByMsgID = nil
@@ -207,16 +206,16 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 
 	// for all newly received parents, wait until they are solid
 	if len(c.currAppState.IssuerCountByParent) > len(c.lastAppState.IssuerCountByParent) {
-		processed := map[iotago.MessageID]struct{}{} // avoid processing duplicate parents more than once
+		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
 		for issuer, msgID := range c.currAppState.ParentByIssuer {
 			// skip duplicates and parents already present in the previous block
-			if _, has := processed[msgID]; has || c.lastAppState.IssuerCountByParent[msgID] > 0 {
+			if _, has := processed[msgID]; has || c.lastAppState.IssuerCountByParent[Key32(msgID)] > 0 {
 				continue
 			}
 			c.log.Debugw("awaiting parent", "msgID", msgID)
 
 			issuer, index := issuer, c.currAppState.CurrentMilestoneIndex
-			c.registry.RegisterCallback(msgID, func(msgID iotago.MessageID) {
+			c.registry.RegisterCallback(msgID, func(msgID iotago.BlockID) {
 				c.processParent(issuer, index, msgID)
 			})
 
@@ -271,7 +270,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 	return types.ResponseCommit{Data: c.lastAppStateHash}
 }
 
-func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, msgID iotago.MessageID) {
+func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, msgID iotago.BlockID) {
 	// ignore parents older than the index in the application state
 	if index < c.StateMilestoneIndex() {
 		return
@@ -302,7 +301,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	msg, err := builder.NewMessageBuilder(c.protoParas.Version).ParentsMessageIDs(ms.Parents).Payload(&ms).Build()
+	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(&ms).Build()
 	if err != nil {
 		return fmt.Errorf("building the message failed: %w", err)
 	}
@@ -310,7 +309,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 		return fmt.Errorf("serializing the message failed: %w", err)
 	}
 
-	latestMilestoneMessageID, err := c.nodeBridge.EmitMessage(ctx, msg)
+	latestMilestoneMessageID, err := c.nodeBridge.SubmitBlock(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("emitting the message failed: %w", err)
 	}
@@ -319,8 +318,8 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	return nil
 }
 
-func MilestoneMessageID(ms *iotago.Milestone) iotago.MessageID {
-	msg, err := builder.NewMessageBuilder(ms.ProtocolVersion).ParentsMessageIDs(ms.Parents).Payload(ms).Build()
+func MilestoneMessageID(ms *iotago.Milestone) iotago.BlockID {
+	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(ms).Build()
 	if err != nil {
 		panic(err)
 	}

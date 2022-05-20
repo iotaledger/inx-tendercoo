@@ -4,22 +4,21 @@ go 1.18
 
 require (
 	github.com/bits-and-blooms/bitset v1.2.2
-	github.com/gohornet/hornet v1.1.0-rc1.0.20220506143319-103f03add01a
+	github.com/gohornet/hornet v1.1.0-rc1.0.20220518090454-ddb9a8f05117
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/iotaledger/hive.go v0.0.0-20220506133510-ef2e113d6665
-	github.com/iotaledger/hive.go/app v0.0.0-20220506133510-ef2e113d6665
-	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220506133510-ef2e113d6665
-	github.com/iotaledger/inx/go v0.0.0-20220506113305-665a887924b0
-	github.com/iotaledger/iota.go/v3 v3.0.0-20220506110451-defa263ae45a
+	github.com/iotaledger/hive.go v0.0.0-20220516114042-6c0ad76bc65f
+	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220516114042-6c0ad76bc65f
+	github.com/iotaledger/inx/go v0.0.0-20220518091520-d408b9dc4865
+	github.com/iotaledger/iota.go/v3 v3.0.0-20220518083125-70b6e37feb4b
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.1
 	github.com/tendermint/tendermint v0.35.4
 	go.uber.org/atomic v1.9.0
 	go.uber.org/dig v1.14.1
 	go.uber.org/zap v1.21.0
-	golang.org/x/crypto v0.0.0-20220513210258-46612604a0f9
-	google.golang.org/grpc v1.46.0
+	golang.org/x/crypto v0.0.0-20220518034528-6f7dac969898
+	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.28.0
 )
 
@@ -35,7 +34,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/dgraph-io/badger/v2 v2.2007.4 // indirect
 	github.com/dgraph-io/ristretto v0.1.0 // indirect
-	github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2 // indirect
+	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.3.5 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -80,7 +79,7 @@ require (
 	github.com/rs/zerolog v1.26.1 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
-	github.com/stretchr/objx v0.3.0 // indirect
+	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e // indirect
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
@@ -88,8 +87,8 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
-	golang.org/x/sys v0.0.0-20220513210249-45d2b4557a2a // indirect
+	golang.org/x/net v0.0.0-20220517181318-183a9ca12b87 // indirect
+	golang.org/x/sys v0.0.0-20220517195934-5e4e11fc645e // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220411194840-2f41105eb62f // indirect
 	google.golang.org/genproto v0.0.0-20220505152158-f39f71e6c8f3 // indirect

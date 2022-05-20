@@ -22,7 +22,7 @@ func TestState_Encoding(t *testing.T) {
 			LastMilestoneMsgID:    tpkg.Rand32ByteArray(),
 		},
 		Timestamp: rand.Uint32(),
-		ParentByIssuer: map[decoo.Key32]iotago.MessageID{
+		ParentByIssuer: map[decoo.Key32]iotago.BlockID{
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 		},
