@@ -427,16 +427,11 @@ func loadEd25519PrivateKeyFromEnvironment(name string) (ed25519.PrivateKey, erro
 	if !exists {
 		return nil, fmt.Errorf("environment variable '%s' not set", name)
 	}
-	if l := len(value); l != hex.EncodedLen(ed25519.SeedSize) {
-		return nil, fmt.Errorf("environment variable '%s' has invalid length: actual=%d expected=%d", name, l, hex.EncodedLen(ed25519.SeedSize))
-	}
-
-	// TODO: using the seed is the correct way, do we need to make it compatible with private key?
-	seed, err := hex.DecodeString(value)
-	if err != nil {
+	var seed Byte32HexValue
+	if err := seed.Set(value); err != nil {
 		return nil, fmt.Errorf("environment variable '%s' contains an invalid private key: %w", name, err)
 	}
-	return ed25519.NewKeyFromSeed(seed), nil
+	return ed25519.NewKeyFromSeed(seed[:]), nil
 }
 
 func loadValidatorsFromConfig(config *configuration.Configuration) (map[string]ValidatorsConfig, error) {
