@@ -49,6 +49,17 @@ const (
 	ProofKey = 0xff // proofs are special as there can be multiple proofs in the queue at the same time
 )
 
+type State struct {
+	// Height denotes the height of the current Tendermint blockchain.
+	Height int64
+	// CurrentMilestoneIndex denotes the index of the milestone that is currently being constructed.
+	CurrentMilestoneIndex uint32
+	// LastMilestoneID denotes the ID of the previous milestone.
+	LastMilestoneID iotago.MilestoneID
+	// LastMilestoneMsgID denotes the ID of a message containing the previous milestone.
+	LastMilestoneMsgID iotago.MessageID
+}
+
 // Coordinator is a Tendermint based decentralized coordinator.
 type Coordinator struct {
 	types.BaseApplication // act as a ABCI application for Tendermint
@@ -59,8 +70,8 @@ type Coordinator struct {
 	log        *logger.Logger
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
-	currAppState     State
-	lastAppState     State
+	currAppState     AppState
+	lastAppState     AppState
 	lastAppStateHash []byte
 
 	ctx     context.Context
@@ -75,7 +86,7 @@ type Coordinator struct {
 // New creates a new Coordinator.
 func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBridge, log *logger.Logger) (*Coordinator, error) {
 	// there must be at least one honest parent in each milestone
-	if committee.T() > iotago.MaxParentsInAMessage {
+	if committee.T() > iotago.MaxParentsInAMessage-1 {
 		return nil, ErrTooManyValidators
 	}
 
@@ -93,7 +104,7 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 
 // InitState initializes the Coordinator.
 // It needs to be called before Start.
-func (c *Coordinator) InitState(bootstrap bool, startIndex uint32, previousID iotago.MilestoneID) error {
+func (c *Coordinator) InitState(bootstrap bool, state *State) error {
 	stateExists, err := c.db.Has(stateDBKey)
 	if err != nil {
 		return err
@@ -111,11 +122,11 @@ func (c *Coordinator) InitState(bootstrap bool, startIndex uint32, previousID io
 
 		// there is no need to specify the Tendermint block height during bootstrapping
 		// if a Tendermint blockchain is present, the state can be reconstructed from it, and it is not bootstrapping
-		c.currAppState.Reset(0, startIndex, previousID)
-		c.lastAppState.Reset(0, startIndex, previousID)
+		c.currAppState.Reset(*state)
+		c.lastAppState.Reset(*state)
 		c.lastAppStateHash = c.lastAppState.Hash()
 
-		c.log.Infow("coordinator bootstrapped", "index", startIndex, "previousMilestoneID", previousID)
+		c.log.Infow("coordinator bootstrapped", "state", state)
 		return nil
 	}
 
@@ -123,7 +134,7 @@ func (c *Coordinator) InitState(bootstrap bool, startIndex uint32, previousID io
 		return err
 	}
 
-	c.log.Infow("coordinator resumed", "index", c.currAppState.Index, "previousMilestoneID", c.currAppState.PreviousID)
+	c.log.Infow("coordinator resumed", "index", c.currAppState.CurrentMilestoneIndex, "previousMilestoneID", c.currAppState.LastMilestoneID)
 	return nil
 }
 
@@ -152,13 +163,15 @@ func (c *Coordinator) Stop() error {
 
 // StateMilestoneIndex returns the milestone index of the ABCI application state.
 func (c *Coordinator) StateMilestoneIndex() uint32 {
-	return c.lastAppState.MilestoneIndex()
+	c.lastAppState.RLock()
+	defer c.lastAppState.RUnlock()
+	return c.lastAppState.CurrentMilestoneIndex
 }
 
 // ProposeParent proposes a parent for the milestone with the given index.
 func (c *Coordinator) ProposeParent(index uint32, msgID hornet.MessageID) error {
 	// ignore this request, if the index is in the past
-	if index < c.lastAppState.MilestoneIndex() {
+	if index < c.StateMilestoneIndex() {
 		return ErrIndexBehindAppState
 	}
 	if !c.started.Load() {

@@ -14,11 +14,14 @@ type void = struct{}
 
 func TestState_Encoding(t *testing.T) {
 	// create random state
-	s := &decoo.State{
-		Height:     rand.Int63(),
-		Index:      rand.Uint32(),
-		PreviousID: tpkg.Rand32ByteArray(),
-		Timestamp:  rand.Uint32(),
+	s := &decoo.AppState{
+		State: decoo.State{
+			Height:                rand.Int63(),
+			CurrentMilestoneIndex: rand.Uint32(),
+			LastMilestoneID:       tpkg.Rand32ByteArray(),
+			LastMilestoneMsgID:    tpkg.Rand32ByteArray(),
+		},
+		Timestamp: rand.Uint32(),
 		ParentByIssuer: map[decoo.Key32]iotago.MessageID{
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
@@ -43,14 +46,14 @@ func TestState_Encoding(t *testing.T) {
 	t.Logf("%s", b)
 
 	// the unmarshalled state must match the original
-	s2 := &decoo.State{}
+	s2 := &decoo.AppState{}
 	require.NoError(t, s2.UnmarshalBinary(b))
 	require.Equal(t, s, s2)
 
 	// test that the serialization is deterministic
 	for i := 0; i < 100; i++ {
 		// create a new deep copy
-		cpy := &decoo.State{}
+		cpy := &decoo.AppState{}
 		require.NoError(t, cpy.UnmarshalBinary(b))
 		// serialization must be identical
 		cpyBytes, err := cpy.MarshalBinary()

@@ -33,8 +33,11 @@ const (
 func (c *Coordinator) Info(req types.RequestInfo) types.ResponseInfo {
 	c.log.Debugw("ABCI info", "req", req)
 
+	c.lastAppState.RLock()
+	defer c.lastAppState.RUnlock()
+
 	return types.ResponseInfo{
-		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.StateMilestoneIndex()),
+		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.lastAppState.CurrentMilestoneIndex),
 		AppVersion:       ProtocolVersion,
 		LastBlockHeight:  c.lastAppState.Height,
 		LastBlockAppHash: c.lastAppStateHash,
@@ -130,27 +133,31 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 	var parents hornet.MessageIDs
 	for msgID, preMsProofs := range c.currAppState.ProofsByMsgID {
 		if c.currAppState.IssuerCountByParent[msgID] > 0 && len(preMsProofs) > c.committee.N()/3 {
-			parents = append(parents, msgID[:])
 			parentWeight += c.currAppState.IssuerCountByParent[msgID]
+			// the last milestone message ID will be added later anyway
+			if msgID != c.currAppState.LastMilestoneMsgID {
+				parents = append(parents, msgID[:])
+			}
 		}
 	}
 
 	// create the final milestone essence, if enough parents have been confirmed
 	if c.currAppState.Milestone == nil && parentWeight > c.committee.N()/3 {
-		// sort the parents lexicographically
-		parents = parents.RemoveDupsAndSortByLexicalOrder()
-		if len(parents) > iotago.MaxParentsInAMessage {
-			parents = parents[:iotago.MaxParentsInAMessage]
+		if len(parents) > iotago.MaxParentsInAMessage-1 {
+			parents = parents[:iotago.MaxParentsInAMessage-1]
 		}
+		// always add the previous milestone as a parent
+		parents = append(parents, c.currAppState.LastMilestoneMsgID[:])
+		parents = parents.RemoveDupsAndSortByLexicalOrder()
 
 		// compute merkle tree root
-		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), milestone.Index(c.currAppState.Index), c.currAppState.Timestamp, parents, c.currAppState.PreviousID)
+		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), milestone.Index(c.currAppState.CurrentMilestoneIndex), c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
 
 		// create milestone essence
-		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.Index, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.PreviousID, parents.ToSliceOfArrays(), merkleProof.ConfirmedMerkleRoot, merkleProof.AppliedMerkleRoot)
+		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents.ToSliceOfArrays(), merkleProof.ConfirmedMerkleRoot, merkleProof.AppliedMerkleRoot)
 
 		// proofs are no longer needed for this milestone
 		c.currAppState.ProofsByMsgID = nil
@@ -167,7 +174,7 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 			panic(err)
 		}
 		partial := &tendermint.PartialSignature{
-			Index:              c.currAppState.Index,
+			Index:              c.currAppState.CurrentMilestoneIndex,
 			MilestoneSignature: c.committee.Sign(essence).Signature[:],
 		}
 		tx, err := c.marshalTx(partial)
@@ -208,7 +215,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 			}
 			c.log.Debugw("awaiting parent", "msgID", msgID)
 
-			issuer, index := issuer, c.currAppState.Index
+			issuer, index := issuer, c.currAppState.CurrentMilestoneIndex
 			c.registry.RegisterCallback(msgID, func(msgID iotago.MessageID) {
 				c.processParent(issuer, index, msgID)
 			})
@@ -220,7 +227,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 	// the milestone is done, if we have enough partial signatures
 	if len(c.currAppState.SignaturesByIssuer) >= c.committee.T() {
 		// create and issue the milestone, if it's index is new and the coordinator is running
-		if c.started.Load() && c.currAppState.Index > uint32(c.nodeBridge.LatestMilestone().Index) {
+		if c.started.Load() && c.currAppState.CurrentMilestoneIndex > uint32(c.nodeBridge.LatestMilestone().Index) {
 			// sort partial signatures to generate deterministic a deterministic milestone payload
 			partials := make(iotago.Signatures, 0, len(c.currAppState.SignaturesByIssuer))
 			for _, signature := range c.currAppState.SignaturesByIssuer {
@@ -237,8 +244,13 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		}
 
 		// reset the state for the next milestone
-		id, _ := c.currAppState.Milestone.ID()
-		c.currAppState.Reset(c.currAppState.Height, c.currAppState.Index+1, *id)
+		state := State{
+			Height:                c.currAppState.Height,
+			CurrentMilestoneIndex: c.currAppState.CurrentMilestoneIndex + 1,
+			LastMilestoneID:       c.currAppState.MilestoneID(),
+			LastMilestoneMsgID:    MilestoneMessageID(c.currAppState.Milestone),
+		}
+		c.currAppState.Reset(state)
 		c.registry.Clear()
 	}
 
@@ -248,7 +260,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		c.log.Fatalf("failed to set database coordinator status: %e", err)
 	}
 	// make a deep copy of the state
-	c.lastAppState.Reset(0, 0, iotago.MilestoneID{})
+	c.lastAppState.Reset(State{})
 	if err := c.lastAppState.UnmarshalBinary(stateBytes); err != nil {
 		panic(err)
 	}
@@ -305,4 +317,12 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	c.log.Debugw("milestone issued", "msgID", latestMilestoneMessageID, "payload", msg.Payload)
 
 	return nil
+}
+
+func MilestoneMessageID(ms *iotago.Milestone) iotago.MessageID {
+	msg, err := builder.NewMessageBuilder(ms.ProtocolVersion).ParentsMessageIDs(ms.Parents).Payload(ms).Build()
+	if err != nil {
+		panic(err)
+	}
+	return msg.MustID()
 }

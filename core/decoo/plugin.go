@@ -5,20 +5,26 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/gohornet/hornet/pkg/model/hornet"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/configuration"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
 	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
 	inx "github.com/iotaledger/inx/go"
+	iotago "github.com/iotaledger/iota.go/v3"
 	flag "github.com/spf13/pflag"
 	abciclient "github.com/tendermint/tendermint/abci/client"
 	tmservice "github.com/tendermint/tendermint/libs/service"
@@ -30,10 +36,14 @@ import (
 )
 
 const (
-	// CfgCoordinatorBootstrap defines whether to bootstrap the network.
+	// CfgCoordinatorBootstrap defines whether the network is bootstrapped.
 	CfgCoordinatorBootstrap = "cooBootstrap"
 	// CfgCoordinatorStartIndex defines the index of the first milestone at bootstrap.
 	CfgCoordinatorStartIndex = "cooStartIndex"
+	// CfgCoordinatorStartMilestoneID defines the previous milestone ID at bootstrap.
+	CfgCoordinatorStartMilestoneID = "cooStartMilestoneID"
+	// CfgCoordinatorStartMilestoneMessageID defines the previous milestone message ID at bootstrap.
+	CfgCoordinatorStartMilestoneMessageID = "cooStartMilestoneMessageID"
 
 	// names of the background worker
 	tendermintWorkerName = "Tendermint Node"
@@ -47,7 +57,40 @@ type ValidatorsConfig struct {
 	Power  int64  `json:"power" koanf:"power"`
 }
 
+// Byte32HexValue holds a 32-byte array. It is used to store values from CLI flags.
+// TODO: do we already have something like this to cleanly parse 32-byte arrays from flags?
+type Byte32HexValue [32]byte
+
+// NewByte32Hex creates a new Byte32HexValue from a reference 32-byte array and a default value.
+func NewByte32Hex(defaultVal [32]byte, p *[32]byte) *Byte32HexValue {
+	copy(p[:], defaultVal[:])
+	return (*Byte32HexValue)(p)
+}
+
+func (v *Byte32HexValue) Type() string { return "byte32Hex" }
+
+func (v *Byte32HexValue) String() string { return hex.EncodeToString(v[:]) }
+
+func (v *Byte32HexValue) Set(val string) error {
+	// pflag always trims string values, so we should do the same
+	trimmed := strings.TrimSpace(val)
+	if l := len(trimmed); l != hex.EncodedLen(len(Byte32HexValue{})) {
+		return fmt.Errorf("invalid length: %d", l)
+	}
+	dec, err := hex.DecodeString(trimmed)
+	if err != nil {
+		return err
+	}
+	copy(v[:], dec)
+	return nil
+}
+
 func init() {
+	flag.BoolVar(bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
+	flag.Uint32Var(startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
+	flag.Var(NewByte32Hex(iotago.MessageID{}, startMilestoneID), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
+	flag.Var(NewByte32Hex(iotago.MessageID{}, startMilestoneMessageID), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
+
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
 			Name:      "DeCoo",
@@ -64,14 +107,22 @@ var (
 	CoreComponent *app.CoreComponent
 	deps          dependencies
 
-	// coordinator config
-	bootstrap          = flag.Bool(CfgCoordinatorBootstrap, false, "bootstrap the network")
-	startIndex         = flag.Uint32(CfgCoordinatorStartIndex, 0, "index of the first milestone at bootstrap")
+	// config flags
+	bootstrap               *bool
+	startIndex              *uint32
+	startMilestoneID        *iotago.MilestoneID
+	startMilestoneMessageID *iotago.MessageID
+
+	// config parameters
 	maxTrackedMessages int
 	interval           time.Duration
 
-	trackMessages            atomic.Bool
-	confirmedMilestoneSignal chan uint32
+	latestMilestone struct {
+		sync.Mutex
+		MilestoneInfo
+	}
+	newMilestoneSignal chan MilestoneInfo
+	trackMessages      atomic.Bool
 
 	// closures
 	onMessageSolid              *events.Closure
@@ -125,7 +176,12 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
 		// load the state or initialize with the given values
-		err = coo.InitState(*bootstrap, *startIndex, deps.NodeBridge.LatestMilestone().MilestoneID)
+		err = coo.InitState(*bootstrap, &decoo.State{
+			Height:                0,
+			CurrentMilestoneIndex: *startIndex,
+			LastMilestoneID:       *startMilestoneID,
+			LastMilestoneMsgID:    *startMilestoneMessageID,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize: %w", err)
 		}
@@ -181,34 +237,66 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
+func processMilestone(inxMilestone *inx.Milestone) {
+	latestMilestone.Lock()
+	defer latestMilestone.Unlock()
+
+	if inxMilestone.GetMilestoneInfo().GetMilestoneIndex() < latestMilestone.Index+1 {
+		return
+	}
+
+	milestone := &iotago.Milestone{}
+	if _, err := milestone.Deserialize(inxMilestone.GetMilestone().GetData(), serializer.DeSeriModeNoValidation, nil); err != nil {
+		CoreComponent.LogPanicf("failed to deserialize milestone: %s", err)
+	}
+	latestMilestone.Index = milestone.Index
+	latestMilestone.MilestoneMsgID = decoo.MilestoneMessageID(milestone)
+	newMilestoneSignal <- latestMilestone.MilestoneInfo
+}
+
 func configure() error {
 	maxTrackedMessages = deps.AppConfig.Int(CfgCoordinatorMaxTrackedMessages)
 	interval = deps.AppConfig.Duration(CfgCoordinatorInterval)
 
-	confirmedMilestoneSignal = make(chan uint32, 1)
+	trackMessages.Store(true)
+	newMilestoneSignal = make(chan MilestoneInfo, 1)
+	if *bootstrap {
+		// initialized the latest milestone with the provided dummy values
+		latestMilestone.Index = *startIndex - 1
+		latestMilestone.MilestoneMsgID = *startMilestoneMessageID
+		// trigger issuing a milestone for that index
+		newMilestoneSignal <- latestMilestone.MilestoneInfo
+	}
 
-	// pass all new solid messages to the selector
+	// pass all new solid messages to the selector and preemptively trigger new milestone when needed
 	onMessageSolid = events.NewClosure(func(metadata *inx.MessageMetadata) {
 		if !trackMessages.Load() || metadata.GetShouldReattach() {
 			return
 		}
 		// add tips to the heaviest branch selector
+		// if there are too many messages, trigger the latest milestone again. This will trigger a new milestone.
 		if trackedMessagesCount := deps.Selector.OnNewSolidMessage(metadata); trackedMessagesCount >= maxTrackedMessages {
-			// if there are too many messages, trigger the latest milestone again. This will trigger a new milestone.
-			latestMilestoneIndex := uint32(deps.NodeBridge.LatestMilestone().Index)
-			select {
-			case confirmedMilestoneSignal <- latestMilestoneIndex:
-			default:
+			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
+			if latestMilestone.TryLock() {
+				defer latestMilestone.Unlock()
+
+				// if a new milestone has already been received, there is no need to preemptively trigger it
+				select {
+				case newMilestoneSignal <- latestMilestone.MilestoneInfo:
+				default:
+				}
 			}
 		}
 	})
 
-	onConfirmedMilestoneChanged = events.NewClosure(func(_ *inx.Milestone) {
-		// the selector needs to be reset after the milestone was confirmed, otherwise
-		// it could contain tips that are already below max depth.
+	// after a new milestone is confirmed, restart the selector and process the new milestone
+	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *inx.Milestone) {
+		// the selector needs to be reset after the milestone was confirmed
 		deps.Selector.Reset()
 		// make sure that new solid messages are tracked
 		trackMessages.Store(true)
+		// process the milestone for the coordinator
+		processMilestone(milestone)
 	})
 
 	return nil
@@ -261,53 +349,45 @@ func run() error {
 	return nil
 }
 
+type MilestoneInfo struct {
+	Index          uint32
+	MilestoneMsgID iotago.MessageID
+}
+
 func coordinatorLoop(ctx context.Context) {
-	latestMilestoneIndex := uint32(deps.NodeBridge.LatestMilestone().Index)
-	onConfirmedMilestoneChanged = events.NewClosure(func(ms *inx.Milestone) {
-		// milestone index must not be old
-		index := ms.GetMilestoneInfo().GetMilestoneIndex()
-		if index <= latestMilestoneIndex {
-			return
-		}
-		// update the index and signal
-		latestMilestoneIndex = index
-		confirmedMilestoneSignal <- index
+	// if we are not bootstrapping, we need to make sure that the latest stored milestone gets processed
+	if !*bootstrap {
+		go func() {
+			index := uint32(deps.NodeBridge.LatestMilestone().Index)
+			milestone, err := deps.NodeBridge.Client.ReadMilestone(ctx, &inx.MilestoneRequest{MilestoneIndex: index})
+			if err != nil {
+				CoreComponent.LogWarnf("failed to read latest milestone: %s", err)
+			} else {
+				// processing will trigger newMilestoneSignal to start the loop
+				processMilestone(milestone)
+			}
+		}()
+	}
 
-		/*
-			var payload iotago.Milestone
-			payload.Deserialize(ms.GetMilestone().GetData(), serializer.DeSeriModeNoValidation, nil)
-			msg, _ := builder.NewMessageBuilder(payload.ProtocolVersion).Payload(&payload).ParentsMessageIDs(payload.Parents).Build()
-			latestMilestoneMessageID := msg.MustID()
-		*/
-	})
-
-	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
-	defer deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
-
-	// TODO: we need a default tip
-	// a) when bootstrapping without a milestone, it can be any solid message. Genesis is not registered as solid?
-	// b) when starting with a milestone, it can be any solid message containing the latest milestone
-	// c) when running, we can use ConfirmedMilestoneChanged to recreate the latest milestone message
-
-	timer := time.NewTimer(0)
+	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
-	index := latestMilestoneIndex
+	var info MilestoneInfo
 	for {
 		select {
 		case <-timer.C: // propose a parent for the milestone with index
-			// TODO: how can we make sure that the previous milestone is always in the past-cone
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
-				// TODO: use the default tip as fallback
-				CoreComponent.LogPanicf("failed to select tips: %s", err)
+				CoreComponent.LogWarnf("failed to select tips: %s", err)
+				// use the previous milestone message as fallback
+				tips = hornet.MessageIDs{info.MilestoneMsgID[:]}
 			}
 			// until the actual milestone is received, the job of the tip selector is done
 			trackMessages.Store(false)
-			if err := deps.Coordinator.ProposeParent(index+1, tips[0]); err != nil {
+			if err := deps.Coordinator.ProposeParent(info.Index+1, tips[0]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
 
-		case index = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
+		case info = <-newMilestoneSignal: // we have received a new milestone without proposing a parent
 			// the timer has not yet fired, so we need to stop it before resetting
 			if !timer.Stop() {
 				<-timer.C
@@ -322,7 +402,7 @@ func coordinatorLoop(ctx context.Context) {
 
 		// when this select is reach, the timer has fired and a milestone was proposed
 		select {
-		case index = <-confirmedMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
+		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
 			timer.Reset(interval) // the timer has already fired, so we can safely reset it
 
 		case <-ctx.Done(): // end the loop
