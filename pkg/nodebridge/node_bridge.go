@@ -73,8 +73,8 @@ func NewNodeBridge(ctx context.Context, client inx.INXClient, enableTreasuryUpda
 			BlockSolid:                events.NewEvent(INXBlockMetadataCaller),
 			ConfirmedMilestoneChanged: events.NewEvent(INXMilestoneCaller),
 		},
-		latestMilestone:       nodeStatus.GetLatestMilestone(),
-		confirmedMilestone:    nodeStatus.GetConfirmedMilestone(),
+		latestMilestone:       nodeStatus.GetLatestMilestone().GetMilestoneInfo(),
+		confirmedMilestone:    nodeStatus.GetConfirmedMilestone().GetMilestoneInfo(),
 		enableTreasuryUpdates: enableTreasuryUpdates,
 	}, nil
 }
@@ -181,8 +181,7 @@ func (n *NodeBridge) BlockMetadata(ctx context.Context, blockID iotago.BlockID) 
 
 func (n *NodeBridge) listenToSolidBlocks(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
-	filter := &inx.BlockFilter{}
-	stream, err := n.Client.ListenToSolidBlocks(ctx, filter)
+	stream, err := n.Client.ListenToSolidBlocks(ctx, &inx.NoParams{})
 	if err != nil {
 		return err
 	}
@@ -205,7 +204,7 @@ func (n *NodeBridge) listenToSolidBlocks(ctx context.Context, cancel context.Can
 
 func (n *NodeBridge) listenToLatestMilestone(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
-	stream, err := n.Client.ListenToLatestMilestone(ctx, &inx.NoParams{})
+	stream, err := n.Client.ListenToLatestMilestones(ctx, &inx.NoParams{})
 	if err != nil {
 		return err
 	}
@@ -228,7 +227,7 @@ func (n *NodeBridge) listenToLatestMilestone(ctx context.Context, cancel context
 
 func (n *NodeBridge) listenToConfirmedMilestone(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
-	stream, err := n.Client.ListenToConfirmedMilestone(ctx, &inx.NoParams{})
+	stream, err := n.Client.ListenToConfirmedMilestones(context.Background(), &inx.MilestoneRangeRequest{})
 	if err != nil {
 		return err
 	}
@@ -251,7 +250,7 @@ func (n *NodeBridge) listenToConfirmedMilestone(ctx context.Context, cancel cont
 
 func (n *NodeBridge) listenToTreasuryUpdates(ctx context.Context, cancel context.CancelFunc) error {
 	defer cancel()
-	stream, err := n.Client.ListenToTreasuryUpdates(ctx, &inx.LedgerRequest{})
+	stream, err := n.Client.ListenToTreasuryUpdates(ctx, &inx.MilestoneRangeRequest{})
 	if err != nil {
 		return err
 	}
