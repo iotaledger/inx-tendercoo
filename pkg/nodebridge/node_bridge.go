@@ -301,11 +301,17 @@ func (n *NodeBridge) processTreasuryUpdate(update *inx.TreasuryUpdate) {
 }
 
 func (n *NodeBridge) RegisterBlockSolidEvent(ctx context.Context, blockID iotago.BlockID) chan struct{} {
+	// TODO: this is just a dirty hack, to make sure that the genesis is always solid
+	if blockID.Empty() {
+		c := make(chan struct{})
+		close(c)
+		return c
+	}
+
 	blockSolidChan := n.tangleListener.RegisterBlockSolidEvent(blockID)
 
 	// check if the block is already solid
-	metadata, err := n.BlockMetadata(ctx, blockID)
-	if err == nil {
+	if metadata, err := n.BlockMetadata(ctx, blockID); err == nil {
 		if metadata.Solid {
 			// trigger the sync event, because the block is already solid
 			n.tangleListener.processSolidBlock(metadata)
