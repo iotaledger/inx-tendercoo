@@ -3,9 +3,11 @@ package decoo
 import (
 	"crypto/ed25519"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
 	tendermintlog "github.com/tendermint/tendermint/libs/log"
@@ -102,8 +104,12 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 
 	var genesisValidators []tmtypes.GenesisValidator
 	for name, validator := range ParamsCoordinator.Tendermint.Validators {
+		var pubKey types.Byte32
+		if err := pubKey.Set(validator.PubKey); err != nil {
+			return nil, nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
+		}
 		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
-			PubKey: tmed25519.PubKey(validator.PubKey[:]),
+			PubKey: tmed25519.PubKey(pubKey[:]),
 			Power:  validator.Power,
 			Name:   name,
 		})

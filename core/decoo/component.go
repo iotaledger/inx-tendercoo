@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -49,15 +50,15 @@ const (
 // ValidatorsConfig defines the config options for one validator.
 // TODO: is there a better way to define multiple validators in the config?
 type ValidatorsConfig struct {
-	PubKey types.Byte32 `json:"pubKey" koanf:"pubKey"`
-	Power  int64        `json:"power" koanf:"power"`
+	PubKey string `json:"pubKey" koanf:"pubKey"`
+	Power  int64  `json:"power" koanf:"power"`
 }
 
 func init() {
-	flag.BoolVar(bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
-	flag.Uint32Var(startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
-	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
-	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
+	flag.BoolVar(&bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
+	flag.Uint32Var(&startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
+	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
+	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
@@ -76,10 +77,10 @@ var (
 	deps          dependencies
 
 	// config flags
-	bootstrap               *bool
-	startIndex              *uint32
-	startMilestoneID        *iotago.MilestoneID
-	startMilestoneMessageID *iotago.BlockID
+	bootstrap               bool
+	startIndex              uint32
+	startMilestoneID        iotago.MilestoneID
+	startMilestoneMessageID iotago.BlockID
 
 	// config parameters
 	maxTrackedMessages int
@@ -126,8 +127,12 @@ func provide(c *dig.Container) error {
 
 		// extract all validator public keys
 		var members []ed25519.PublicKey
-		for _, validator := range ParamsCoordinator.Tendermint.Validators {
-			members = append(members, validator.PubKey[:])
+		for name, validator := range ParamsCoordinator.Tendermint.Validators {
+			var pubKey types.Byte32
+			if err := pubKey.Set(validator.PubKey); err != nil {
+				return nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
+			}
+			members = append(members, pubKey[:])
 		}
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 
@@ -137,11 +142,11 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
 		// load the state or initialize with the given values
-		err = coo.InitState(*bootstrap, &decoo.State{
+		err = coo.InitState(bootstrap, &decoo.State{
 			Height:                0,
-			CurrentMilestoneIndex: *startIndex,
-			LastMilestoneID:       *startMilestoneID,
-			LastMilestoneMsgID:    *startMilestoneMessageID,
+			CurrentMilestoneIndex: startIndex,
+			LastMilestoneID:       startMilestoneID,
+			LastMilestoneMsgID:    startMilestoneMessageID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize: %w", err)
@@ -213,10 +218,10 @@ func processMilestone(inxMilestone *inx.Milestone) {
 func configure() error {
 	trackMessages.Store(true)
 	newMilestoneSignal = make(chan MilestoneInfo, 1)
-	if *bootstrap {
+	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
-		latestMilestone.Index = *startIndex - 1
-		latestMilestone.MilestoneMsgID = *startMilestoneMessageID
+		latestMilestone.Index = startIndex - 1
+		latestMilestone.MilestoneMsgID = startMilestoneMessageID
 		// trigger issuing a milestone for that index
 		newMilestoneSignal <- latestMilestone.MilestoneInfo
 	}
@@ -309,9 +314,9 @@ type MilestoneInfo struct {
 
 func coordinatorLoop(ctx context.Context) {
 	// if we are not bootstrapping, we need to make sure that the latest stored milestone gets processed
-	if !*bootstrap {
+	if !bootstrap {
 		go func() {
-			index := uint32(deps.NodeBridge.LatestMilestone().Index)
+			index := deps.NodeBridge.LatestMilestone().Index
 			milestone, err := deps.NodeBridge.Client.ReadMilestone(ctx, &inx.MilestoneRequest{MilestoneIndex: index})
 			if err != nil {
 				CoreComponent.LogWarnf("failed to read latest milestone: %s", err)
