@@ -13,11 +13,12 @@ import (
 
 	"github.com/gohornet/hornet/pkg/common"
 	"github.com/gohornet/hornet/pkg/keymanager"
+	"github.com/gohornet/hornet/pkg/model/milestone"
+	"github.com/gohornet/inx-app/nodebridge"
 	"github.com/gohornet/inx-coordinator/pkg/coordinator"
 	"github.com/gohornet/inx-coordinator/pkg/daemon"
 	"github.com/gohornet/inx-coordinator/pkg/migrator"
 	"github.com/gohornet/inx-coordinator/pkg/mselection"
-	"github.com/gohornet/inx-coordinator/pkg/nodebridge"
 	"github.com/gohornet/inx-coordinator/pkg/todo"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/app/core/shutdown"
@@ -80,10 +81,12 @@ var (
 
 type dependencies struct {
 	dig.In
-	Coordinator     *coordinator.Coordinator
-	Selector        *mselection.HeaviestSelector
-	NodeBridge      *nodebridge.NodeBridge
-	ShutdownHandler *shutdown.ShutdownHandler
+	Coordinator      *coordinator.Coordinator
+	Selector         *mselection.HeaviestSelector
+	NodeBridge       *nodebridge.NodeBridge
+	ShutdownHandler  *shutdown.ShutdownHandler
+	TangleListener   *nodebridge.TangleListener
+	TreasuryListener *TreasuryListener `optional:"true"`
 }
 
 func provide(c *dig.Container) error {
@@ -106,15 +109,32 @@ func provide(c *dig.Container) error {
 		NodeBridge      *nodebridge.NodeBridge
 	}
 
-	if err := c.Provide(func(deps coordinatorDeps) *coordinator.Coordinator {
+	type coordinatorDepsOut struct {
+		dig.Out
+		Coordinator      *coordinator.Coordinator
+		TangleListener   *nodebridge.TangleListener
+		TreasuryListener *TreasuryListener `optional:"true"`
+	}
+
+	if err := c.Provide(func(deps coordinatorDeps) coordinatorDepsOut {
+
+		var treasuryListener *TreasuryListener
+		if deps.MigratorService != nil {
+			treasuryListener = NewTreasuryListener(CoreComponent.Logger(), deps.NodeBridge)
+		}
 
 		initCoordinator := func() (*coordinator.Coordinator, error) {
+
+			keyManager := keymanager.New()
+			for _, keyRange := range deps.NodeBridge.NodeConfig.GetMilestoneKeyRanges() {
+				keyManager.AddKeyRange(keyRange.GetPublicKey(), milestone.Index(keyRange.GetStartIndex()), milestone.Index(keyRange.GetEndIndex()))
+			}
 
 			signingProvider, err := initSigningProvider(
 				ParamsCoordinator.Signing.Provider,
 				ParamsCoordinator.Signing.RemoteAddress,
-				deps.NodeBridge.KeyManager(),
-				deps.NodeBridge.MilestonePublicKeyCount(),
+				keyManager,
+				int(deps.NodeBridge.NodeConfig.GetMilestonePublicKeyCount()),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize signing provider: %s", err)
@@ -129,12 +149,12 @@ func provide(c *dig.Container) error {
 			}
 
 			coo, err := coordinator.New(
-				deps.NodeBridge.ComputeMerkleTreeHash,
+				ComputeMerkleTreeHash,
 				deps.NodeBridge.IsNodeSynced,
-				deps.NodeBridge.NodeConfig.UnwrapProtocolParameters(),
+				deps.NodeBridge.ProtocolParameters(),
 				signingProvider,
 				deps.MigratorService,
-				deps.NodeBridge.LatestTreasuryOutput,
+				treasuryListener.LatestTreasuryOutput,
 				sendBlock,
 				coordinator.WithLogger(CoreComponent.Logger()),
 				coordinator.WithStateFilePath(ParamsCoordinator.StateFilePath),
@@ -147,7 +167,24 @@ func provide(c *dig.Container) error {
 				return nil, err
 			}
 
-			if err := coo.InitState(*bootstrap, *startIndex, deps.NodeBridge.LatestMilestone()); err != nil {
+			latestMilestone := &coordinator.LatestMilestoneInfo{
+				Index:       0,
+				Timestamp:   0,
+				MilestoneID: iotago.MilestoneID{},
+			}
+
+			ms, err := deps.NodeBridge.LatestMilestone()
+			if err != nil {
+				return nil, err
+			}
+			if ms != nil {
+				latestMilestone = &coordinator.LatestMilestoneInfo{
+					Index:       ms.Milestone.Index,
+					Timestamp:   ms.Milestone.Timestamp,
+					MilestoneID: ms.MilestoneID,
+				}
+			}
+			if err := coo.InitState(*bootstrap, *startIndex, latestMilestone); err != nil {
 				return nil, err
 			}
 
@@ -161,7 +198,11 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			CoreComponent.LogPanic(err)
 		}
-		return coo
+		return coordinatorDepsOut{
+			Coordinator:      coo,
+			TangleListener:   nodebridge.NewTangleListener(deps.NodeBridge),
+			TreasuryListener: treasuryListener,
+		}
 	}); err != nil {
 		return err
 	}
@@ -227,6 +268,24 @@ func run() error {
 		ticker.WaitForGracefulShutdown()
 	}, daemon.PriorityStopCoordinatorMilestoneTicker); err != nil {
 		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
+
+	if err := CoreComponent.Daemon().BackgroundWorker("Coordinator[TangleListener]", func(ctx context.Context) {
+		CoreComponent.LogInfo("Start TangleListener")
+		deps.TangleListener.Run(ctx)
+		CoreComponent.LogInfo("Stopped TangleListener")
+	}, daemon.PriorityStopTangleListener); err != nil {
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
+
+	if deps.TreasuryListener != nil {
+		if err := CoreComponent.Daemon().BackgroundWorker("Coordinator[TreasuryListener]", func(ctx context.Context) {
+			CoreComponent.LogInfo("Start TreasuryListener")
+			deps.TreasuryListener.Run(ctx)
+			CoreComponent.LogInfo("Stopped TreasuryListener")
+		}, daemon.PriorityStopTreasuryListener); err != nil {
+			CoreComponent.LogPanicf("failed to start worker: %s", err)
+		}
 	}
 
 	// create a background worker that issues milestones
@@ -419,10 +478,10 @@ func sendBlock(block *iotago.Block, msIndex ...uint32) (iotago.BlockID, error) {
 	var milestoneConfirmedEventChan chan struct{}
 
 	if len(msIndex) > 0 {
-		milestoneConfirmedEventChan = deps.NodeBridge.RegisterMilestoneConfirmedEvent(msIndex[0])
+		milestoneConfirmedEventChan = deps.TangleListener.RegisterMilestoneConfirmedEvent(msIndex[0])
 		defer func() {
 			if err != nil {
-				deps.NodeBridge.DeregisterMilestoneConfirmedEvent(msIndex[0])
+				deps.TangleListener.DeregisterMilestoneConfirmedEvent(msIndex[0])
 			}
 		}()
 	}
@@ -433,11 +492,11 @@ func sendBlock(block *iotago.Block, msIndex ...uint32) (iotago.BlockID, error) {
 		return iotago.EmptyBlockID(), err
 	}
 
-	blockSolidEventChan := deps.NodeBridge.RegisterBlockSolidEvent(context.Background(), blockID)
+	blockSolidEventChan := deps.TangleListener.RegisterBlockSolidEvent(blockID)
 
 	defer func() {
 		if err != nil {
-			deps.NodeBridge.DeregisterBlockSolidEvent(blockID)
+			deps.TangleListener.DeregisterBlockSolidEvent(blockID)
 		}
 	}()
 
@@ -478,7 +537,7 @@ func configureEvents() {
 		}
 	})
 
-	onConfirmedMilestoneChanged = events.NewClosure(func(_ *inx.Milestone) {
+	onConfirmedMilestoneChanged = events.NewClosure(func(_ *nodebridge.Milestone) {
 		heaviestSelectorLock.Lock()
 		defer heaviestSelectorLock.Unlock()
 
@@ -503,14 +562,14 @@ func configureEvents() {
 }
 
 func attachEvents() {
-	deps.NodeBridge.Events.BlockSolid.Attach(onBlockSolid)
+	deps.TangleListener.Events.BlockSolid.Attach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
 	deps.Coordinator.Events.IssuedCheckpointBlock.Attach(onIssuedCheckpoint)
 	deps.Coordinator.Events.IssuedMilestone.Attach(onIssuedMilestone)
 }
 
 func detachEvents() {
-	deps.NodeBridge.Events.BlockSolid.Detach(onBlockSolid)
+	deps.TangleListener.Events.BlockSolid.Detach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
 	deps.Coordinator.Events.IssuedCheckpointBlock.Detach(onIssuedCheckpoint)
 	deps.Coordinator.Events.IssuedMilestone.Detach(onIssuedMilestone)

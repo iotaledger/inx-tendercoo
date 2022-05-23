@@ -49,6 +49,8 @@ var (
 	ErrNoTipsGiven = errors.New("no tips given")
 	// ErrNetworkBootstrapped is returned when the flag for bootstrap network was given, but a state file already exists.
 	ErrNetworkBootstrapped = errors.New("network already bootstrapped")
+	// ErrNodeLoadTooHigh is returned if the backpressure func says the node load is too high
+	ErrNodeLoadTooHigh = errors.New("node load too high")
 )
 
 // Events are the events issued by the coordinator.
@@ -450,7 +452,7 @@ func (coo *Coordinator) IssueCheckpoint(checkpointIndex int, lastCheckpointBlock
 	// check whether we should hold issuing checkpoints
 	// if the node is currently under a lot of load
 	if coo.checkBackPressureFunctions() {
-		return iotago.EmptyBlockID(), common.SoftError(common.ErrNodeLoadTooHigh)
+		return iotago.EmptyBlockID(), common.SoftError(ErrNodeLoadTooHigh)
 	}
 
 	// maximum 8 parents per block (7 tips + last checkpoint blockID)
@@ -502,7 +504,7 @@ func (coo *Coordinator) IssueMilestone(parents iotago.BlockIDs) (iotago.BlockID,
 	// check whether we should hold issuing miletones
 	// if the node is currently under a lot of load
 	if coo.checkBackPressureFunctions() {
-		return iotago.EmptyBlockID(), common.SoftError(common.ErrNodeLoadTooHigh)
+		return iotago.EmptyBlockID(), common.SoftError(ErrNodeLoadTooHigh)
 	}
 
 	if err := coo.createAndSendMilestone(parents, coo.state.LatestMilestoneIndex+1, coo.state.LatestMilestoneID); err != nil {
