@@ -149,6 +149,8 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 		parents = append(parents, c.currAppState.LastMilestoneMsgID)
 		parents = parents.RemoveDupsAndSort()
 
+		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
+
 		// compute merkle tree root
 		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
@@ -225,21 +227,23 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 
 	// the milestone is done, if we have enough partial signatures
 	if len(c.currAppState.SignaturesByIssuer) >= c.committee.T() {
-		// create and issue the milestone, if it's index is new and the coordinator is running
-		if c.started.Load() && c.currAppState.CurrentMilestoneIndex > uint32(c.nodeBridge.LatestMilestone().Index) {
-			// sort partial signatures to generate deterministic a deterministic milestone payload
-			partials := make(iotago.Signatures, 0, len(c.currAppState.SignaturesByIssuer))
-			for _, signature := range c.currAppState.SignaturesByIssuer {
-				partials = append(partials, signature)
-			}
-			sort.Slice(partials, func(i, j int) bool {
-				return bytes.Compare(
-					partials[i].(*iotago.Ed25519Signature).PublicKey[:],
-					partials[j].(*iotago.Ed25519Signature).PublicKey[:]) < 0
-			})
+		// sort partial signatures to generate deterministic milestone payload
+		signatures := make(iotago.Signatures, 0, len(c.currAppState.SignaturesByIssuer))
+		for _, signature := range c.currAppState.SignaturesByIssuer {
+			signatures = append(signatures, signature)
+		}
+		sort.Slice(signatures, func(i, j int) bool {
+			return bytes.Compare(
+				signatures[i].(*iotago.Ed25519Signature).PublicKey[:],
+				signatures[j].(*iotago.Ed25519Signature).PublicKey[:]) < 0
+		})
+		// add the signatures to the milestone
+		c.currAppState.Milestone.Signatures = signatures
 
+		// create and issue the milestone message, if its index is new and the coordinator is running
+		if c.started.Load() && c.currAppState.CurrentMilestoneIndex > c.nodeBridge.LatestMilestone().Index {
 			// TODO: what do we do if this fails?
-			go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone, partials)
+			go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
 		}
 
 		// reset the state for the next milestone
@@ -283,7 +287,8 @@ func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint
 		panic(err)
 	}
 
-	c.log.Debugw("broadcast tx", "proof", proof)
+	type stripped *tendermint.Proof // ignore ugly protobuf String() method
+	c.log.Debugw("broadcast tx", "proof", stripped(proof))
 
 	// submit the proof for broadcast
 	// keep at most one parent per issuer in the queue
@@ -294,10 +299,7 @@ func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint
 	c.broadcastQueue.Submit(ProofKey+member, tx)
 }
 
-func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Milestone, signatures iotago.Signatures) error {
-	// add the signatures to the milestone
-	ms.Signatures = signatures
-
+func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Milestone) error {
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}

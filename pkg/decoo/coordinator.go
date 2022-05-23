@@ -88,6 +88,10 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 	if committee.T() > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
+	// there must be space for one signature per committee member
+	if committee.N() > iotago.MaxSignaturesInAMilestone {
+		return nil, ErrTooManyValidators
+	}
 
 	c := &Coordinator{
 		db:         db,
@@ -182,7 +186,9 @@ func (c *Coordinator) ProposeParent(index uint32, msgID iotago.BlockID) error {
 	if err != nil {
 		panic(err)
 	}
-	c.log.Debugw("broadcast tx", "parent", parent)
+
+	type stripped *tendermint.Parent // ignore ugly protobuf String() method
+	c.log.Debugw("broadcast tx", "parent", stripped(parent))
 	c.broadcastQueue.Submit(ParentKey, tx)
 	return nil
 }

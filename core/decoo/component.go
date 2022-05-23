@@ -82,10 +82,6 @@ var (
 	startMilestoneID        iotago.MilestoneID
 	startMilestoneMessageID iotago.BlockID
 
-	// config parameters
-	maxTrackedMessages int
-	interval           time.Duration
-
 	latestMilestone struct {
 		sync.Mutex
 		MilestoneInfo
@@ -233,7 +229,7 @@ func configure() error {
 		}
 		// add tips to the heaviest branch selector
 		// if there are too many messages, trigger the latest milestone again. This will trigger a new milestone.
-		if trackedMessagesCount := deps.Selector.OnNewSolidBlock(metadata); trackedMessagesCount >= maxTrackedMessages {
+		if trackedMessagesCount := deps.Selector.OnNewSolidBlock(metadata); trackedMessagesCount >= ParamsCoordinator.MaxTrackedBlocks {
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
 			if latestMilestone.TryLock() {
 				defer latestMilestone.Unlock()
@@ -351,7 +347,7 @@ func coordinatorLoop(ctx context.Context) {
 				<-timer.C
 			}
 			// TODO: reset to MS.time + interval
-			timer.Reset(interval)
+			timer.Reset(ParamsCoordinator.Interval)
 			continue
 
 		case <-ctx.Done(): // end the loop
@@ -361,7 +357,7 @@ func coordinatorLoop(ctx context.Context) {
 		// when this select is reach, the timer has fired and a milestone was proposed
 		select {
 		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
-			timer.Reset(interval) // the timer has already fired, so we can safely reset it
+			timer.Reset(ParamsCoordinator.Interval) // the timer has already fired, so we can safely reset it
 
 		case <-ctx.Done(): // end the loop
 			return

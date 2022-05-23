@@ -3,8 +3,8 @@
     "address": "localhost:9029"
   },
   "coordinator": {
-    "interval": "10s",
-    "maxTrackedMessages": 10000,
+    "interval": "5s",
+    "maxTrackedBlocks": 10000,
     "tipsel": {
       "minHeaviestBranchUnreferencedMessagesThreshold": 20,
       "maxHeaviestBranchTipsPerCheckpoint": 10,
