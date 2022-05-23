@@ -68,7 +68,7 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	// private validator
 	privValKeyFile := conf.PrivValidator.KeyFile()
 	privValStateFile := conf.PrivValidator.StateFile()
-	if fileExists(privValKeyFile) {
+	if fileExists(privValKeyFile) && fileExists(privValStateFile) {
 		if _, err := privval.LoadFilePV(privValKeyFile, privValStateFile); err != nil {
 			return nil, nil, fmt.Errorf("invalid private validator: %w", err)
 		}
