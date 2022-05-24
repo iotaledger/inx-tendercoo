@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gohornet/inx-app/nodebridge"
 	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
-	registry2 "github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"
-	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/rpc/client"
@@ -79,11 +79,11 @@ type Coordinator struct {
 
 	broadcastQueue *queue.KeyedQueue
 	protoParas     *iotago.ProtocolParameters
-	registry       *registry2.Registry
+	registry       *registry.Registry
 }
 
 // New creates a new Coordinator.
-func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBridge, log *logger.Logger) (*Coordinator, error) {
+func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener *nodebridge.TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be at least one honest parent in each milestone
 	if committee.T() > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -99,7 +99,8 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 		nodeBridge: nodeBridge,
 		log:        log,
 		protoParas: nodeBridge.NodeConfig.UnwrapProtocolParameters(),
-		registry:   registry2.New(context.Background(), nodeBridge),
+		// TODO: fix context
+		registry: registry.New(context.Background(), tangleListener),
 	}
 	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil

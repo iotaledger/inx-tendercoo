@@ -10,16 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gohornet/inx-app/nodebridge"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
-	"github.com/iotaledger/inx-tendercoo/pkg/nodebridge"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	flag "github.com/spf13/pflag"
@@ -43,8 +42,9 @@ const (
 	CfgCoordinatorStartMilestoneMessageID = "cooStartMilestoneMessageID"
 
 	// names of the background worker
-	tendermintWorkerName = "Tendermint Node"
-	decooWorkerName      = "Coordinator"
+	tangleListenerWorkerName = "TangleListener"
+	tendermintWorkerName     = "Tendermint Node"
+	decooWorkerName          = "Coordinator"
 )
 
 // ValidatorsConfig defines the config options for one validator.
@@ -96,10 +96,11 @@ var (
 
 type dependencies struct {
 	dig.In
-	NodeBridge     *nodebridge.NodeBridge
-	Selector       *mselection.HeaviestSelector
 	Coordinator    *decoo.Coordinator
+	Selector       *mselection.HeaviestSelector
 	TendermintNode tmservice.Service
+	NodeBridge     *nodebridge.NodeBridge
+	TangleListener *nodebridge.TangleListener
 }
 
 func provide(c *dig.Container) error {
@@ -111,11 +112,17 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
+	// provide the node bridge tangle listener
+	if err := c.Provide(nodebridge.NewTangleListener); err != nil {
+		return err
+	}
+
 	// provide the coordinator
 	type coordinatorDeps struct {
 		dig.In
 		CoordinatorPrivateKey ed25519.PrivateKey
 		NodeBridge            *nodebridge.NodeBridge
+		TangleListener        *nodebridge.TangleListener
 	}
 	if err := c.Provide(func(deps coordinatorDeps) (*decoo.Coordinator, error) {
 		CoreComponent.LogInfo("Providing Coordinator ...")
@@ -133,7 +140,7 @@ func provide(c *dig.Container) error {
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 
 		// TODO: handle state storage
-		coo, err := decoo.New(mapdb.NewMapDB(), committee, deps.NodeBridge, CoreComponent.Logger())
+		coo, err := decoo.New(mapdb.NewMapDB(), committee, deps.NodeBridge, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
@@ -194,18 +201,14 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
-func processMilestone(inxMilestone *inx.Milestone) {
+func processMilestone(milestone *iotago.Milestone) {
 	latestMilestone.Lock()
 	defer latestMilestone.Unlock()
 
-	if inxMilestone.GetMilestoneInfo().GetMilestoneIndex() < latestMilestone.Index+1 {
+	if milestone.Index < latestMilestone.Index+1 {
 		return
 	}
 
-	milestone := &iotago.Milestone{}
-	if _, err := milestone.Deserialize(inxMilestone.GetMilestone().GetData(), serializer.DeSeriModeNoValidation, nil); err != nil {
-		CoreComponent.LogPanicf("failed to deserialize milestone: %s", err)
-	}
 	latestMilestone.Index = milestone.Index
 	latestMilestone.MilestoneMsgID = decoo.MilestoneMessageID(milestone)
 	newMilestoneSignal <- latestMilestone.MilestoneInfo
@@ -244,19 +247,44 @@ func configure() error {
 	})
 
 	// after a new milestone is confirmed, restart the selector and process the new milestone
-	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *inx.Milestone) {
+	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
 		// the selector needs to be reset after the milestone was confirmed
 		deps.Selector.Reset()
 		// make sure that new solid messages are tracked
 		trackMessages.Store(true)
 		// process the milestone for the coordinator
-		processMilestone(milestone)
+		processMilestone(milestone.Milestone)
 	})
 
 	return nil
 }
 
 func run() error {
+	if err := CoreComponent.Daemon().BackgroundWorker(tangleListenerWorkerName, func(ctx context.Context) {
+		CoreComponent.LogInfo("Starting " + tangleListenerWorkerName + " ... done")
+		deps.TangleListener.Run(ctx)
+		CoreComponent.LogInfo("Stopping " + tangleListenerWorkerName + " ... done")
+	}, daemon.PriorityStopTangleListener); err != nil {
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
+
+	if err := CoreComponent.Daemon().BackgroundWorker(tendermintWorkerName, func(ctx context.Context) {
+		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ...")
+		if err := deps.TendermintNode.Start(); err != nil {
+			CoreComponent.LogPanicf("failed to start: %s", err)
+		}
+		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ... done")
+
+		<-ctx.Done()
+		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " ...")
+		if err := deps.TendermintNode.Stop(); err != nil {
+			CoreComponent.LogWarn(err)
+		}
+		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " ... done")
+	}, daemon.PriorityStopTendermint); err != nil {
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
+
 	if err := CoreComponent.Daemon().BackgroundWorker(decooWorkerName, func(ctx context.Context) {
 		CoreComponent.LogInfo("Starting " + decooWorkerName + " ...")
 		attachEvents()
@@ -274,29 +302,12 @@ func run() error {
 		// run the coordinator and issue milestones
 		coordinatorLoop(ctx)
 
-		CoreComponent.LogInfo("Stopping " + decooWorkerName + " server ...")
+		CoreComponent.LogInfo("Stopping " + decooWorkerName + " ...")
 		if err := deps.Coordinator.Stop(); err != nil {
 			CoreComponent.LogWarn(err)
 		}
-		CoreComponent.LogInfo("Stopping " + decooWorkerName + " server ... done")
+		CoreComponent.LogInfo("Stopping " + decooWorkerName + " ... done")
 	}, daemon.PriorityStopCoordinator); err != nil {
-		CoreComponent.LogPanicf("failed to start worker: %s", err)
-	}
-
-	if err := CoreComponent.Daemon().BackgroundWorker(tendermintWorkerName, func(ctx context.Context) {
-		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ...")
-		if err := deps.TendermintNode.Start(); err != nil {
-			CoreComponent.LogPanicf("failed to start: %s", err)
-		}
-		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ... done")
-
-		<-ctx.Done()
-		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " server ...")
-		if err := deps.TendermintNode.Stop(); err != nil {
-			CoreComponent.LogWarn(err)
-		}
-		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " server ... done")
-	}, daemon.PriorityStopTendermint); err != nil {
 		CoreComponent.LogPanicf("failed to start worker: %s", err)
 	}
 
@@ -312,13 +323,12 @@ func coordinatorLoop(ctx context.Context) {
 	// if we are not bootstrapping, we need to make sure that the latest stored milestone gets processed
 	if !bootstrap {
 		go func() {
-			index := deps.NodeBridge.LatestMilestone().Index
-			milestone, err := deps.NodeBridge.Client.ReadMilestone(ctx, &inx.MilestoneRequest{MilestoneIndex: index})
+			milestone, err := deps.NodeBridge.LatestMilestone()
 			if err != nil {
 				CoreComponent.LogWarnf("failed to read latest milestone: %s", err)
 			} else {
 				// processing will trigger newMilestoneSignal to start the loop
-				processMilestone(milestone)
+				processMilestone(milestone.Milestone)
 			}
 		}()
 	}
@@ -366,12 +376,12 @@ func coordinatorLoop(ctx context.Context) {
 }
 
 func attachEvents() {
-	deps.NodeBridge.Events.BlockSolid.Attach(onMessageSolid)
+	deps.TangleListener.Events.BlockSolid.Attach(onMessageSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
 }
 
 func detachEvents() {
-	deps.NodeBridge.Events.BlockSolid.Detach(onMessageSolid)
+	deps.TangleListener.Events.BlockSolid.Detach(onMessageSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
 }
 

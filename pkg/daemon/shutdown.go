@@ -1,7 +1,8 @@
 package daemon
 
 const (
-	PriorityDisconnectINX = iota // no dependencies
-	PriorityStopCoordinator
+	PriorityDisconnectINX = iota
+	PriorityStopTangleListener
 	PriorityStopTendermint
+	PriorityStopCoordinator
 )

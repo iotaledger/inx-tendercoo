@@ -14,7 +14,7 @@ import (
 var ErrAlreadyRegistered = errors.New("message ID is already registered")
 
 type EventRegisterer interface {
-	RegisterBlockSolidEvent(context.Context, iotago.BlockID) chan struct{}
+	RegisterBlockSolidEvent(iotago.BlockID) chan struct{}
 	DeregisterBlockSolidEvent(id iotago.BlockID)
 }
 
@@ -67,7 +67,7 @@ func (r *Registry) RegisterCallback(id iotago.BlockID, f func(iotago.BlockID)) e
 	r.registered[id] = struct{}{}
 
 	go func() {
-		c := r.registerer.RegisterBlockSolidEvent(r.ctx, id)
+		c := r.registerer.RegisterBlockSolidEvent(id)
 		_ = events.WaitForChannelClosed(r.ctx, c)
 
 		r.Lock()

@@ -16,7 +16,7 @@ var testId = iotago.BlockID{42}
 
 type NodeBridgeMock struct{ mock.Mock }
 
-func (m *NodeBridgeMock) RegisterBlockSolidEvent(_ context.Context, id iotago.BlockID) chan struct{} {
+func (m *NodeBridgeMock) RegisterBlockSolidEvent(id iotago.BlockID) chan struct{} {
 	return m.Called(id).Get(0).(chan struct{})
 }
 

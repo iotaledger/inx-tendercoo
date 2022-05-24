@@ -1,16 +1,16 @@
 package app
 
 import (
+	"github.com/gohornet/inx-app/inx"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/app/core/shutdown"
 	"github.com/iotaledger/hive.go/app/plugins/profiling"
 	"github.com/iotaledger/inx-tendercoo/core/decoo"
-	"github.com/iotaledger/inx-tendercoo/core/inx"
 )
 
 var (
 	// Name of the app.
-	Name = "inx-coordinator"
+	Name = "inx-tendercoo"
 
 	// Version of the app.
 	Version = "0.0.1"
@@ -43,10 +43,10 @@ func init() {
 			"config",
 			"help",
 			"version",
-			"migratorBootstrap",
-			"migratorStartIndex",
-			"cooBootstrap",
-			"cooStartIndex",
+			decoo.CfgCoordinatorBootstrap,
+			decoo.CfgCoordinatorStartIndex,
+			decoo.CfgCoordinatorStartMilestoneID,
+			decoo.CfgCoordinatorStartMilestoneMessageID,
 		},
 	}
 }

@@ -152,13 +152,13 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
 
 		// compute merkle tree root
-		merkleProof, err := c.nodeBridge.ComputeMerkleTreeHash(context.Background(), c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
+		inclMerkleProof, appliedMerkleRoot, err := c.computeMerkleTreeHash(context.Background(), c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
 
 		// create milestone essence
-		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, merkleProof.InclusionMerkleRoot, merkleProof.AppliedMerkleRoot)
+		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, inclMerkleProof, appliedMerkleRoot)
 
 		// proofs are no longer needed for this milestone
 		c.currAppState.ProofsByMsgID = nil
@@ -241,9 +241,11 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		c.currAppState.Milestone.Signatures = signatures
 
 		// create and issue the milestone message, if its index is new and the coordinator is running
-		if c.started.Load() && c.currAppState.CurrentMilestoneIndex > c.nodeBridge.LatestMilestone().Index {
-			// TODO: what do we do if this fails?
-			go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
+		if c.started.Load() {
+			if latest, err := c.nodeBridge.LatestMilestone(); err != nil && c.currAppState.CurrentMilestoneIndex > latest.Milestone.Index {
+				// TODO: what do we do if this fails?
+				go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
+			}
 		}
 
 		// reset the state for the next milestone
