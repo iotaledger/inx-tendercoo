@@ -10,15 +10,15 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
-// ErrAlreadyRegistered is returned when a callback for the same message ID has already been registered.
-var ErrAlreadyRegistered = errors.New("message ID is already registered")
+// ErrAlreadyRegistered is returned when a callback for the same block ID has already been registered.
+var ErrAlreadyRegistered = errors.New("block ID is already registered")
 
 type EventRegisterer interface {
 	RegisterBlockSolidEvent(iotago.BlockID) chan struct{}
 	DeregisterBlockSolidEvent(id iotago.BlockID)
 }
 
-// Registry represents a convenient way to register callbacks when messages become solid.
+// Registry represents a convenient way to register callbacks when blocks become solid.
 type Registry struct {
 	sync.Mutex
 
@@ -31,8 +31,8 @@ type Registry struct {
 }
 
 // New creates a new Registry.
-func New(ctx context.Context, registerer EventRegisterer) *Registry {
-	ctx, cancel := context.WithCancel(ctx)
+func New(registerer EventRegisterer) *Registry {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Registry{
 		ctx:        ctx,
 		cancel:     cancel,
@@ -52,7 +52,7 @@ func (r *Registry) Close() error {
 	return nil
 }
 
-// RegisterCallback registers a callback for when a message with id becomes solid.
+// RegisterCallback registers a callback for when a block with id becomes solid.
 // If another callback for the same ID has already been registered, an error is returned.
 func (r *Registry) RegisterCallback(id iotago.BlockID, f func(iotago.BlockID)) error {
 	r.Lock()
@@ -62,7 +62,7 @@ func (r *Registry) RegisterCallback(id iotago.BlockID, f func(iotago.BlockID)) e
 		return err
 	}
 	if _, ok := r.registered[id]; ok {
-		return fmt.Errorf("%w: message %x", ErrAlreadyRegistered, id)
+		return fmt.Errorf("%w: block %x", ErrAlreadyRegistered, id)
 	}
 	r.registered[id] = struct{}{}
 
@@ -73,7 +73,7 @@ func (r *Registry) RegisterCallback(id iotago.BlockID, f func(iotago.BlockID)) e
 		r.Lock()
 		defer r.Unlock()
 
-		// if the message has been cleared in the meantime, there is nothing to do
+		// if the block has been cleared in the meantime, there is nothing to do
 		if _, ok := r.cleared[id]; ok {
 			delete(r.cleared, id)
 			return

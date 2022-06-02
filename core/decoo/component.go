@@ -48,7 +48,7 @@ const (
 )
 
 // ValidatorsConfig defines the config options for one validator.
-// TODO: is there a better way to define multiple validators in the config?
+// TODO: what is the best way to define PubKey as a [32]byte
 type ValidatorsConfig struct {
 	PubKey string `json:"pubKey" koanf:"pubKey"`
 	Power  int64  `json:"power" koanf:"power"`
@@ -180,7 +180,6 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("invalid level: %w", err)
 		}
 		// this replays blocks until Tendermint and Coordinator are synced
-		// TODO: do we need to issue the milestones of replayed blocks?
 		return tmnode.New(conf, NewTenderLogger(log, lvl), abciclient.NewLocalCreator(deps.Coordinator), gen)
 	}); err != nil {
 		return err

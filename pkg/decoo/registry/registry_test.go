@@ -26,7 +26,7 @@ func (m *NodeBridgeMock) DeregisterBlockSolidEvent(id iotago.BlockID) {
 
 func TestNew(t *testing.T) {
 	o := &NodeBridgeMock{}
-	r := registry.New(context.Background(), o)
+	r := registry.New(o)
 	require.NoError(t, r.Close())
 	o.AssertExpectations(t)
 }
@@ -36,7 +36,7 @@ func TestRegistry_RegisterCallback(t *testing.T) {
 	c := make(chan struct{})
 	o.On("RegisterBlockSolidEvent", testId).Return(c).Once()
 
-	r := registry.New(context.Background(), o)
+	r := registry.New(o)
 
 	var called atomic.Bool
 	require.NoError(t, r.RegisterCallback(testId, func(iotago.BlockID) { called.Store(true) }))
@@ -55,7 +55,7 @@ func TestRegistry_DeregisterCallback(t *testing.T) {
 	o.On("RegisterBlockSolidEvent", testId).Return(c).Once()
 	o.On("DeregisterBlockSolidEvent", testId).Run(func(mock.Arguments) { close(c) }).Once()
 
-	r := registry.New(context.Background(), o)
+	r := registry.New(o)
 
 	var called atomic.Bool
 	require.NoError(t, r.RegisterCallback(testId, func(iotago.BlockID) { called.Store(true) }))
@@ -81,7 +81,7 @@ func TestRegistry_Clear(t *testing.T) {
 		close(testChan)
 	})
 
-	r := registry.New(context.Background(), o)
+	r := registry.New(o)
 
 	require.NoError(t, r.RegisterCallback(iotago.BlockID{}, func(iotago.BlockID) {}))
 	var called atomic.Bool
@@ -103,7 +103,7 @@ func TestRegistry_Close(t *testing.T) {
 	o.On("RegisterBlockSolidEvent", testId).Return(chan struct{}(nil)).Once()
 	o.On("DeregisterBlockSolidEvent", testId).Once()
 
-	r := registry.New(context.Background(), o)
+	r := registry.New(o)
 
 	var called atomic.Bool
 	require.NoError(t, r.RegisterCallback(testId, func(iotago.BlockID) { called.Store(true) }))

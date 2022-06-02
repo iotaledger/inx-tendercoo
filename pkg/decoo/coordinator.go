@@ -99,8 +99,7 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 		nodeBridge: nodeBridge,
 		log:        log,
 		protoParas: nodeBridge.NodeConfig.UnwrapProtocolParameters(),
-		// TODO: fix context
-		registry: registry.New(context.Background(), tangleListener),
+		registry:   registry.New(tangleListener),
 	}
 	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil
