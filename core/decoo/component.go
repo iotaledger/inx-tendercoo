@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gohornet/inx-app/nodebridge"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"

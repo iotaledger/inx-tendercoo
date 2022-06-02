@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/gohornet/inx-app/inx"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/app/core/shutdown"
 	"github.com/iotaledger/hive.go/app/plugins/profiling"
+	"github.com/iotaledger/inx-app/inx"
 	"github.com/iotaledger/inx-tendercoo/core/decoo"
 )
 

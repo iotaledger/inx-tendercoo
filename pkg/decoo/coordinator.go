@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gohornet/inx-app/nodebridge"
 	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"

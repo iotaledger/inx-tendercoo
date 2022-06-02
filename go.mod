@@ -4,23 +4,23 @@ go 1.18
 
 require (
 	github.com/bits-and-blooms/bitset v1.2.2
-	github.com/gohornet/inx-app v0.0.0-20220523132442-95017a89cb2b
-	github.com/iotaledger/hive.go v0.0.0-20220516114042-6c0ad76bc65f
-	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220516114042-6c0ad76bc65f
-	github.com/iotaledger/inx/go v0.0.0-20220523105438-4e34054d0c13
-	github.com/iotaledger/iota.go/v3 v3.0.0-20220519135423-82921868d5cd
+	github.com/iotaledger/hive.go v0.0.0-20220531132324-8347a155e220
+	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220531132324-8347a155e220
+	github.com/iotaledger/inx-app v0.0.0-20220601072641-b7addc1bce01
+	github.com/iotaledger/inx/go v0.0.0-20220530154855-f371ab0a309d
+	github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.1
-	github.com/tendermint/tendermint v0.35.4
+	github.com/tendermint/tendermint v0.35.5
 	go.uber.org/atomic v1.9.0
 	go.uber.org/dig v1.14.1
 	go.uber.org/zap v1.21.0
-	golang.org/x/crypto v0.0.0-20220518034528-6f7dac969898
+	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
 	google.golang.org/protobuf v1.28.0
 )
 
 require (
-	filippo.io/edwards25519 v1.0.0-rc.1 // indirect
+	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Workiva/go-datastructures v1.0.53 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
@@ -37,7 +37,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.3.5 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/ethereum/go-ethereum v1.10.17 // indirect
+	github.com/ethereum/go-ethereum v1.10.18 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/jmhodges/levigo v1.0.0 // indirect
 	github.com/klauspost/compress v1.15.4 // indirect
 	github.com/knadh/koanf v1.4.2-0.20220512043835-4112a7258008 // indirect
-	github.com/lib/pq v1.10.5 // indirect
+	github.com/lib/pq v1.10.6 // indirect
 	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
@@ -68,7 +68,7 @@ require (
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20210609091139-0a56a4bca00b // indirect
 	github.com/pasztorpisti/qs v0.0.0-20171216220353-8d6c33ee906c // indirect
 	github.com/pelletier/go-toml/v2 v2.0.1 // indirect
-	github.com/petermattis/goid v0.0.0-20220512133901-1f93b0c1af58 // indirect
+	github.com/petermattis/goid v0.0.0-20220526132513-07eaf5d0b9f4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.12.2 // indirect
@@ -88,12 +88,12 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2 // indirect
+	golang.org/x/net v0.0.0-20220526153639-5463443f8c37 // indirect
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
-	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd // indirect
-	google.golang.org/grpc v1.46.2 // indirect
+	google.golang.org/genproto v0.0.0-20220527130721-00d5c0f3be58 // indirect
+	google.golang.org/grpc v1.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
