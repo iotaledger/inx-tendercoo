@@ -1,0 +1,28 @@
+{
+  "coordinator": {
+    "tendermint": {
+      "validators": {
+        "coo-1": {
+          "pubKey": "6160a605aac652e869283b00b73dbdc8edf88ba4d39af8d318e7e82b19a7537b",
+          "power": 1,
+          "address": "172.18.211.21:26656"
+        },
+        "coo-2": {
+          "pubKey": "3e0c7bd9ae163709690bbdf7fbe44895ff020cd84570593777327617ec05bf58",
+          "power": 1,
+          "address": "172.18.211.22:26656"
+        },
+        "coo-3": {
+          "pubKey": "c349c218556170e684ebedbfcde94d7c7ac9d9f7eb7d191ee01b80501052324b",
+          "power": 1,
+          "address": "172.18.211.23:26656"
+        },
+        "coo-4": {
+          "pubKey": "f1245afc66b7e77e552debc86fc28975c5099f62a539c7138b0de46ab6f456c1",
+          "power": 1,
+          "address": "172.18.211.24:26656"
+        }
+      }
+    }
+  }
+}
