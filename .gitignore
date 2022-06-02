@@ -1,7 +1,5 @@
-/coordinator.state
-/coordinator.state_old
 .idea
-inx-coordinator
+inx-tendercoo
 .DS_Store
 
 private_tangle/snapshots
