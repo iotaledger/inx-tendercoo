@@ -55,8 +55,8 @@ type State struct {
 	CurrentMilestoneIndex uint32
 	// LastMilestoneID denotes the ID of the previous milestone.
 	LastMilestoneID iotago.MilestoneID
-	// LastMilestoneMsgID denotes the ID of a message containing the previous milestone.
-	LastMilestoneMsgID iotago.BlockID
+	// LastMilestoneBlockID denotes the ID of a block containing the previous milestone.
+	LastMilestoneBlockID iotago.BlockID
 }
 
 // Coordinator is a Tendermint based decentralized coordinator.
@@ -172,7 +172,7 @@ func (c *Coordinator) StateMilestoneIndex() uint32 {
 }
 
 // ProposeParent proposes a parent for the milestone with the given index.
-func (c *Coordinator) ProposeParent(index uint32, msgID iotago.BlockID) error {
+func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error {
 	// ignore this request, if the index is in the past
 	if index < c.StateMilestoneIndex() {
 		return ErrIndexBehindAppState
@@ -181,7 +181,7 @@ func (c *Coordinator) ProposeParent(index uint32, msgID iotago.BlockID) error {
 		return ErrNotStarted
 	}
 
-	parent := &tendermint.Parent{Index: index, MessageId: msgID[:]}
+	parent := &tendermint.Parent{Index: index, BlockId: blockID[:]}
 	tx, err := c.marshalTx(parent)
 	if err != nil {
 		panic(err)

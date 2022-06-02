@@ -38,8 +38,8 @@ const (
 	CfgCoordinatorStartIndex = "cooStartIndex"
 	// CfgCoordinatorStartMilestoneID defines the previous milestone ID at bootstrap.
 	CfgCoordinatorStartMilestoneID = "cooStartMilestoneID"
-	// CfgCoordinatorStartMilestoneMessageID defines the previous milestone message ID at bootstrap.
-	CfgCoordinatorStartMilestoneMessageID = "cooStartMilestoneMessageID"
+	// CfgCoordinatorStartMilestoneBlockID defines the previous milestone block ID at bootstrap.
+	CfgCoordinatorStartMilestoneBlockID = "cooStartMilestoneBlockID"
 
 	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
@@ -58,7 +58,7 @@ func init() {
 	flag.BoolVar(&bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
 	flag.Uint32Var(&startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
 	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
-	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneMessageID)), CfgCoordinatorStartMilestoneMessageID, "previous milestone message ID at bootstrap")
+	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneBlockID)), CfgCoordinatorStartMilestoneBlockID, "previous milestone block ID at bootstrap")
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
@@ -77,20 +77,20 @@ var (
 	deps          dependencies
 
 	// config flags
-	bootstrap               bool
-	startIndex              uint32
-	startMilestoneID        iotago.MilestoneID
-	startMilestoneMessageID iotago.BlockID
+	bootstrap             bool
+	startIndex            uint32
+	startMilestoneID      iotago.MilestoneID
+	startMilestoneBlockID iotago.BlockID
 
 	latestMilestone struct {
 		sync.Mutex
 		MilestoneInfo
 	}
 	newMilestoneSignal chan MilestoneInfo
-	trackMessages      atomic.Bool
+	trackBlocks        atomic.Bool
 
 	// closures
-	onMessageSolid              *events.Closure
+	onBlockSolid                *events.Closure
 	onConfirmedMilestoneChanged *events.Closure
 )
 
@@ -149,7 +149,7 @@ func provide(c *dig.Container) error {
 			Height:                0,
 			CurrentMilestoneIndex: startIndex,
 			LastMilestoneID:       startMilestoneID,
-			LastMilestoneMsgID:    startMilestoneMessageID,
+			LastMilestoneBlockID:  startMilestoneBlockID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize: %w", err)
@@ -209,29 +209,29 @@ func processMilestone(milestone *iotago.Milestone) {
 	}
 
 	latestMilestone.Index = milestone.Index
-	latestMilestone.MilestoneMsgID = decoo.MilestoneMessageID(milestone)
+	latestMilestone.MilestoneBlockID = decoo.MilestoneBlockID(milestone)
 	newMilestoneSignal <- latestMilestone.MilestoneInfo
 }
 
 func configure() error {
-	trackMessages.Store(true)
+	trackBlocks.Store(true)
 	newMilestoneSignal = make(chan MilestoneInfo, 1)
 	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
 		latestMilestone.Index = startIndex - 1
-		latestMilestone.MilestoneMsgID = startMilestoneMessageID
+		latestMilestone.MilestoneBlockID = startMilestoneBlockID
 		// trigger issuing a milestone for that index
 		newMilestoneSignal <- latestMilestone.MilestoneInfo
 	}
 
-	// pass all new solid messages to the selector and preemptively trigger new milestone when needed
-	onMessageSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
-		if !trackMessages.Load() || metadata.GetShouldReattach() {
+	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
+	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
+		if !trackBlocks.Load() || metadata.GetShouldReattach() {
 			return
 		}
 		// add tips to the heaviest branch selector
-		// if there are too many messages, trigger the latest milestone again. This will trigger a new milestone.
-		if trackedMessagesCount := deps.Selector.OnNewSolidBlock(metadata); trackedMessagesCount >= ParamsCoordinator.MaxTrackedBlocks {
+		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
+		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= ParamsCoordinator.MaxTrackedBlocks {
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
 			if latestMilestone.TryLock() {
 				defer latestMilestone.Unlock()
@@ -249,8 +249,8 @@ func configure() error {
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
 		// the selector needs to be reset after the milestone was confirmed
 		deps.Selector.Reset()
-		// make sure that new solid messages are tracked
-		trackMessages.Store(true)
+		// make sure that new solid blocks are tracked
+		trackBlocks.Store(true)
 		// process the milestone for the coordinator
 		processMilestone(milestone.Milestone)
 	})
@@ -314,8 +314,8 @@ func run() error {
 }
 
 type MilestoneInfo struct {
-	Index          uint32
-	MilestoneMsgID iotago.BlockID
+	Index            uint32
+	MilestoneBlockID iotago.BlockID
 }
 
 func coordinatorLoop(ctx context.Context) {
@@ -341,11 +341,11 @@ func coordinatorLoop(ctx context.Context) {
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
 				CoreComponent.LogWarnf("failed to select tips: %s", err)
-				// use the previous milestone message as fallback
-				tips = iotago.BlockIDs{info.MilestoneMsgID}
+				// use the previous milestone block as fallback
+				tips = iotago.BlockIDs{info.MilestoneBlockID}
 			}
 			// until the actual milestone is received, the job of the tip selector is done
-			trackMessages.Store(false)
+			trackBlocks.Store(false)
 			if err := deps.Coordinator.ProposeParent(info.Index+1, tips[0]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
@@ -375,12 +375,12 @@ func coordinatorLoop(ctx context.Context) {
 }
 
 func attachEvents() {
-	deps.TangleListener.Events.BlockSolid.Attach(onMessageSolid)
+	deps.TangleListener.Events.BlockSolid.Attach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
 }
 
 func detachEvents() {
-	deps.TangleListener.Events.BlockSolid.Detach(onMessageSolid)
+	deps.TangleListener.Events.BlockSolid.Detach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
 }
 

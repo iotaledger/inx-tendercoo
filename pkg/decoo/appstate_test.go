@@ -20,7 +20,7 @@ func TestState_Encoding(t *testing.T) {
 			Height:                rand.Int63(),
 			CurrentMilestoneIndex: rand.Uint32(),
 			LastMilestoneID:       tpkg.Rand32ByteArray(),
-			LastMilestoneMsgID:    tpkg.Rand32ByteArray(),
+			LastMilestoneBlockID:  tpkg.Rand32ByteArray(),
 		},
 		Timestamp: rand.Uint32(),
 		ParentByIssuer: map[types.Byte32]iotago.BlockID{
@@ -31,7 +31,7 @@ func TestState_Encoding(t *testing.T) {
 			tpkg.Rand32ByteArray(): rand.Int(),
 			tpkg.Rand32ByteArray(): rand.Int(),
 		},
-		ProofsByMsgID: map[types.Byte32]map[types.Byte32]void{
+		ProofsByBlockID: map[types.Byte32]map[types.Byte32]void{
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 		},

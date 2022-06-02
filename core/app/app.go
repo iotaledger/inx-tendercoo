@@ -46,7 +46,7 @@ func init() {
 			decoo.CfgCoordinatorBootstrap,
 			decoo.CfgCoordinatorStartIndex,
 			decoo.CfgCoordinatorStartMilestoneID,
-			decoo.CfgCoordinatorStartMilestoneMessageID,
+			decoo.CfgCoordinatorStartMilestoneBlockID,
 		},
 	}
 }

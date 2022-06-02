@@ -109,13 +109,13 @@ func (r *Registry) Clear() {
 
 func (r *Registry) clear() {
 	// add all registered IDs to cleared
-	for msgID := range r.cleared {
-		r.registered[msgID] = struct{}{}
+	for blockID := range r.cleared {
+		r.registered[blockID] = struct{}{}
 	}
 	r.cleared = r.registered
 	// clear all elements of registered
 	r.registered = map[iotago.BlockID]struct{}{}
-	for msgID := range r.cleared {
-		r.registerer.DeregisterBlockSolidEvent(msgID)
+	for blockID := range r.cleared {
+		r.registerer.DeregisterBlockSolidEvent(blockID)
 	}
 }

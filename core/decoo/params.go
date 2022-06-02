@@ -17,7 +17,7 @@ type Tendermint struct {
 
 type ParametersCoordinator struct {
 	Interval         time.Duration `default:"5s" usage:"the interval milestones are issued"`
-	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of known messages for milestone tipselection"`
+	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of known blocks for milestone tipselection"`
 	TipSel           struct {
 		MinHeaviestBranchUnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold of unreferenced blocks in the heaviest branch"`
 		MaxHeaviestBranchTipsPerCheckpoint           int           `default:"10" usage:"maximum amount of checkpoint blocks with heaviest branch tips that are picked if the heaviest branch is not below 'MinHeaviestBranchUnreferencedBlocksThreshold' before"`

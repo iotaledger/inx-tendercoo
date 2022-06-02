@@ -17,15 +17,15 @@ message TxRaw {
 message Parent {
   // index of the corresponding milestone to prevent replays
   uint32 index = 1;
-  // message ID of the proposed message
-  bytes message_id = 2;
+  // block ID of the proposed message
+  bytes block_id = 2;
 }
 
 // Proof that a certain pre-milestone has been received.
 message Proof {
   // index of the corresponding milestone to prevent replays
   uint32 index = 1;
-  // message ID of the pre-milestone
+  // block ID of a parent
   bytes parent_id = 2;
 }
 

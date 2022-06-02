@@ -25,8 +25,8 @@ type AppState struct {
 	// IssuerCountByParent counts the issuers of each parent
 	IssuerCountByParent map[types.Byte32]int
 
-	// ProofsByMsgID contains the received proofs sorted by Proof.PreMilestoneMsgID and Proof.PublicKey.
-	ProofsByMsgID map[types.Byte32]map[types.Byte32]struct{}
+	// ProofsByBlockID contains the received proofs sorted by Proof.ParentId and Proof.PublicKey.
+	ProofsByBlockID map[types.Byte32]map[types.Byte32]struct{}
 
 	// Milestone contains the constructed Milestone, or nil if we are still collecting proofs.
 	Milestone *iotago.Milestone
@@ -46,7 +46,7 @@ func (a *AppState) Reset(state State) {
 	a.Timestamp = 0
 	a.ParentByIssuer = map[types.Byte32]iotago.BlockID{}
 	a.IssuerCountByParent = map[types.Byte32]int{}
-	a.ProofsByMsgID = map[types.Byte32]map[types.Byte32]struct{}{}
+	a.ProofsByBlockID = map[types.Byte32]map[types.Byte32]struct{}{}
 	a.Milestone = nil
 	a.SignaturesByIssuer = map[types.Byte32]*iotago.Ed25519Signature{}
 }
@@ -74,8 +74,8 @@ func (a *AppState) CheckParent(p *tendermint.Parent) uint32 {
 	if p.Index < a.CurrentMilestoneIndex {
 		return CodeTypeStateError
 	}
-	// the milestone MsgID must have the correct length
-	if len(p.MessageId) != len(iotago.BlockID{}) {
+	// the block ID must have the correct length
+	if len(p.BlockId) != len(iotago.BlockID{}) {
 		return CodeTypeSyntaxError
 	}
 	return CodeTypeOK
@@ -98,9 +98,9 @@ func (a *AppState) DeliverParent(issuer ed25519.PublicKey, p *tendermint.Parent,
 	}
 
 	// add the parent to the state
-	msgID := types.Byte32FromSlice(p.GetMessageId())
-	a.ParentByIssuer[issuerKey] = iotago.BlockID(msgID)
-	a.IssuerCountByParent[msgID]++
+	blockID := types.Byte32FromSlice(p.GetBlockId())
+	a.ParentByIssuer[issuerKey] = iotago.BlockID(blockID)
+	a.IssuerCountByParent[blockID]++
 	return CodeTypeOK
 }
 
@@ -113,7 +113,7 @@ func (a *AppState) CheckProof(p *tendermint.Proof) uint32 {
 	if p.Index < a.CurrentMilestoneIndex {
 		return CodeTypeStateError
 	}
-	// the milestone MsgID must have the correct length
+	// the block ID must have the correct length
 	if len(p.ParentId) != len(iotago.BlockID{}) {
 		return CodeTypeSyntaxError
 	}
@@ -130,16 +130,16 @@ func (a *AppState) DeliverProof(issuer ed25519.PublicKey, p *tendermint.Proof, _
 	if a.Milestone != nil {
 		return CodeTypeStateError
 	}
-	// the referenced message must be a parent
-	msgID := types.Byte32FromSlice(p.ParentId)
-	if a.IssuerCountByParent[msgID] < 1 {
+	// the referenced block must be a parent
+	blockID := types.Byte32FromSlice(p.ParentId)
+	if a.IssuerCountByParent[blockID] < 1 {
 		return CodeTypeStateError
 	}
 	// check that the same proof was not issued already
-	proofs := a.ProofsByMsgID[msgID]
+	proofs := a.ProofsByBlockID[blockID]
 	if proofs == nil {
 		proofs = map[types.Byte32]struct{}{}
-		a.ProofsByMsgID[msgID] = proofs
+		a.ProofsByBlockID[blockID] = proofs
 	}
 	if _, has := proofs[types.Byte32FromSlice(issuer)]; has {
 		return CodeTypeReplayError

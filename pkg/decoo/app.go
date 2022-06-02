@@ -129,13 +129,13 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 	// collect parents that have sufficient proofs
 	parentWeight := 0
 	var parents iotago.BlockIDs
-	for msgIDKey, preMsProofs := range c.currAppState.ProofsByMsgID {
-		if c.currAppState.IssuerCountByParent[msgIDKey] > 0 && len(preMsProofs) > c.committee.N()/3 {
-			parentWeight += c.currAppState.IssuerCountByParent[msgIDKey]
-			msgID := iotago.BlockID(msgIDKey)
-			// the last milestone message ID will be added later anyway
-			if msgID != c.currAppState.LastMilestoneMsgID {
-				parents = append(parents, msgID)
+	for blockIDKey, preMsProofs := range c.currAppState.ProofsByBlockID {
+		if c.currAppState.IssuerCountByParent[blockIDKey] > 0 && len(preMsProofs) > c.committee.N()/3 {
+			parentWeight += c.currAppState.IssuerCountByParent[blockIDKey]
+			blockID := iotago.BlockID(blockIDKey)
+			// the last milestone block ID will be added later anyway
+			if blockID != c.currAppState.LastMilestoneBlockID {
+				parents = append(parents, blockID)
 			}
 		}
 	}
@@ -146,7 +146,7 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 			parents = parents[:iotago.BlockMaxParents-1]
 		}
 		// always add the previous milestone as a parent
-		parents = append(parents, c.currAppState.LastMilestoneMsgID)
+		parents = append(parents, c.currAppState.LastMilestoneBlockID)
 		parents = parents.RemoveDupsAndSort()
 
 		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
@@ -161,7 +161,7 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, inclMerkleProof, appliedMerkleRoot)
 
 		// proofs are no longer needed for this milestone
-		c.currAppState.ProofsByMsgID = nil
+		c.currAppState.ProofsByBlockID = nil
 	}
 
 	// create and broadcast our partial signature
@@ -209,19 +209,19 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 	// for all newly received parents, wait until they are solid
 	if len(c.currAppState.IssuerCountByParent) > len(c.lastAppState.IssuerCountByParent) {
 		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
-		for issuer, msgID := range c.currAppState.ParentByIssuer {
+		for issuer, blockID := range c.currAppState.ParentByIssuer {
 			// skip duplicates and parents already present in the previous block
-			if _, has := processed[msgID]; has || c.lastAppState.IssuerCountByParent[[32]byte(msgID)] > 0 {
+			if _, has := processed[blockID]; has || c.lastAppState.IssuerCountByParent[[32]byte(blockID)] > 0 {
 				continue
 			}
-			c.log.Debugw("awaiting parent", "msgID", msgID)
+			c.log.Debugw("awaiting parent", "blockID", blockID)
 
 			issuer, index := issuer, c.currAppState.CurrentMilestoneIndex
-			c.registry.RegisterCallback(msgID, func(msgID iotago.BlockID) {
-				c.processParent(issuer, index, msgID)
+			c.registry.RegisterCallback(blockID, func(blockID iotago.BlockID) {
+				c.processParent(issuer, index, blockID)
 			})
 
-			processed[msgID] = struct{}{}
+			processed[blockID] = struct{}{}
 		}
 	}
 
@@ -240,7 +240,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		// add the signatures to the milestone
 		c.currAppState.Milestone.Signatures = signatures
 
-		// create and issue the milestone message, if its index is new and the coordinator is running
+		// create and issue the milestone block, if its index is new and the coordinator is running
 		if c.started.Load() {
 			latest, err := c.nodeBridge.LatestMilestone()
 			if err != nil {
@@ -257,7 +257,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 			Height:                c.currAppState.Height,
 			CurrentMilestoneIndex: c.currAppState.CurrentMilestoneIndex + 1,
 			LastMilestoneID:       c.currAppState.MilestoneID(),
-			LastMilestoneMsgID:    MilestoneMessageID(c.currAppState.Milestone),
+			LastMilestoneBlockID:  MilestoneBlockID(c.currAppState.Milestone),
 		}
 		c.currAppState.Reset(state)
 		c.registry.Clear()
@@ -280,14 +280,14 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 	return types.ResponseCommit{Data: c.lastAppStateHash}
 }
 
-func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, msgID iotago.BlockID) {
+func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, blockID iotago.BlockID) {
 	// ignore parents older than the index in the application state
 	if index < c.StateMilestoneIndex() {
 		return
 	}
 
 	// create a proof referencing this parent
-	proof := &tendermint.Proof{Index: index, ParentId: msgID[:]}
+	proof := &tendermint.Proof{Index: index, ParentId: blockID[:]}
 	tx, err := c.marshalTx(proof)
 	if err != nil {
 		panic(err)
@@ -311,22 +311,22 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	}
 	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(&ms).Build()
 	if err != nil {
-		return fmt.Errorf("building the message failed: %w", err)
+		return fmt.Errorf("building the block failed: %w", err)
 	}
 	if _, err := msg.Serialize(serializer.DeSeriModePerformValidation, c.protoParas); err != nil {
-		return fmt.Errorf("serializing the message failed: %w", err)
+		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
-	latestMilestoneMessageID, err := c.nodeBridge.SubmitBlock(ctx, msg)
+	latestMilestoneBlockID, err := c.nodeBridge.SubmitBlock(ctx, msg)
 	if err != nil {
-		return fmt.Errorf("emitting the message failed: %w", err)
+		return fmt.Errorf("emitting the block failed: %w", err)
 	}
-	c.log.Debugw("milestone issued", "msgID", latestMilestoneMessageID, "payload", msg.Payload)
+	c.log.Debugw("milestone issued", "blockID", latestMilestoneBlockID, "payload", msg.Payload)
 
 	return nil
 }
 
-func MilestoneMessageID(ms *iotago.Milestone) iotago.BlockID {
+func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
 	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(ms).Build()
 	if err != nil {
 		panic(err)
