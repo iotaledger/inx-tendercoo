@@ -1,0 +1,361 @@
+version: "3.9"
+services:
+  create-snapshots:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.11
+    volumes:
+      - ./snapshots:/app/snapshots
+    command:
+      - "tool"
+      - "snap-gen"
+      - "--networkName=private_tangle1"
+      - "--mintAddress=60200bad8137a704216e84f8f9acfe65b972d9f4155becb4815282b03cef99fe"
+      - "--outputPath=/app/snapshots/coo-1/full_snapshot.bin"
+    profiles:
+      - snapshots
+
+  coo-1:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.11
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    stop_grace_period: 5m
+    ports:
+      - "14265:14265/tcp"
+      - "15600:15600/tcp"
+      - "8081:8081/tcp"
+      - "9311:9311/tcp"
+    cap_drop:
+      - ALL
+    volumes:
+      - ./config_private_tangle.json:/app/config_private_tangle.json:ro
+      - ./privatedb/coo-1:/app/privatedb
+      - ./snapshots/coo-1:/app/snapshots
+    command:
+      - "-c"
+      - "config_private_tangle.json"
+      - "--node.alias=coo-1"
+      - "--inx.bindAddress=172.18.211.11:9029"
+      - "--p2p.identityPrivateKey=1f46fad4f538a031d4f87f490f6bca4319dfd0307636a5759a22b5e8874bd608f9156ba976a12918c16a481c38c88a7b5351b769adc30390e93b6c0a63b09b79"
+      - "--p2p.peers=/ip4/172.18.211.12/tcp/15600/p2p/12D3KooWCKwcTWevoRKa2kEBputeGASvEBuDfRDSbe8t1DWugUmL,/ip4/172.18.211.13/tcp/15600/p2p/12D3KooWGdr8M5KX8KuKaXSiKfHJstdVnRkadYmupF7tFk2HrRoA,/ip4/172.18.211.14/tcp/15600/p2p/12D3KooWC7uE9w3RN4Vh1FJAZa8SbE8yMWR6wCVBajcWpyWguV73"
+      - "--p2p.peerAliases=coo-2,coo-3,coo-4"
+    profiles:
+      - bootstrap
+      - run
+
+  inx-tendercoo-1-bootstrap:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.21
+    environment:
+      - "COO_PRV_KEY=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-1:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--cooBootstrap"
+      - "--cooStartIndex=1"
+      - "--inx.address=172.18.211.11:9029"
+    profiles:
+      - bootstrap
+
+  inx-tendercoo-1:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.21
+    environment:
+      - "COO_PRV_KEY=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-1:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.11:9029"
+    profiles:
+      - run
+
+  coo-2:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.12
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    stop_grace_period: 5m
+    ports:
+      - "14266:14265/tcp"
+      - "15601:15600/tcp"
+      - "8082:8081/tcp"
+      - "9312:9311/tcp"
+    cap_drop:
+      - ALL
+    volumes:
+      - ./config_private_tangle.json:/app/config_private_tangle.json:ro
+      - ./privatedb/coo-2:/app/privatedb
+      - ./snapshots/coo-2:/app/snapshots
+    command:
+      - "-c"
+      - "config_private_tangle.json"
+      - "--node.alias=coo-2"
+      - "--inx.bindAddress=172.18.211.12:9029"
+      - "--p2p.identityPrivateKey=a06b288ce7fc3b6f1e716f6f7d72050b53417aae4b305a68883550a3bb28597f254b082515a79391a7f13009b4133851a0c4d48e0e948809c3b46ff3e2500b4f"
+      - "--p2p.peers=/ip4/172.18.211.11/tcp/15600/p2p/12D3KooWSagdVaCrS14GeJhM8CbQr41AW2PiYMgptTyAybCbQuEY,/ip4/172.18.211.13/tcp/15600/p2p/12D3KooWGdr8M5KX8KuKaXSiKfHJstdVnRkadYmupF7tFk2HrRoA,/ip4/172.18.211.14/tcp/15600/p2p/12D3KooWC7uE9w3RN4Vh1FJAZa8SbE8yMWR6wCVBajcWpyWguV73"
+      - "--p2p.peerAliases=coo-1,coo-3,coo-4"
+    profiles:
+      - bootstrap
+      - run
+
+  inx-tendercoo-2-bootstrap:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.22
+    environment:
+      - "COO_PRV_KEY=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-2:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--cooBootstrap"
+      - "--cooStartIndex=1"
+      - "--inx.address=172.18.211.12:9029"
+    profiles:
+      - bootstrap
+
+  inx-tendercoo-2:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.22
+    environment:
+      - "COO_PRV_KEY=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-2:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.12:9029"
+    profiles:
+      - run
+
+  coo-3:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.13
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    stop_grace_period: 5m
+    ports:
+      - "14267:14265/tcp"
+      - "15602:15600/tcp"
+      - "8083:8081/tcp"
+      - "9313:9311/tcp"
+    cap_drop:
+      - ALL
+    volumes:
+      - ./config_private_tangle.json:/app/config_private_tangle.json:ro
+      - ./privatedb/coo-3:/app/privatedb
+      - ./snapshots/coo-3:/app/snapshots
+    command:
+      - "-c"
+      - "config_private_tangle.json"
+      - "--node.alias=coo-3"
+      - "--inx.bindAddress=172.18.211.13:9029"
+      - "--p2p.identityPrivateKey=5126767a84e1ced849dbbf2be809fd40f90bcfb81bd0d3309e2e25e34f803bf265500854f1f0e8fd3c389cf7b6b59cfd422b9319f257e2a8d3a772973560acdd"
+      - "--p2p.peers=/ip4/172.18.211.11/tcp/15600/p2p/12D3KooWSagdVaCrS14GeJhM8CbQr41AW2PiYMgptTyAybCbQuEY,/ip4/172.18.211.12/tcp/15600/p2p/12D3KooWCKwcTWevoRKa2kEBputeGASvEBuDfRDSbe8t1DWugUmL,/ip4/172.18.211.14/tcp/15600/p2p/12D3KooWC7uE9w3RN4Vh1FJAZa8SbE8yMWR6wCVBajcWpyWguV73"
+      - "--p2p.peerAliases=coo-1,coo-2,coo-4"
+    profiles:
+      - bootstrap
+      - run
+
+  inx-tendercoo-3-bootstrap:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.23
+    environment:
+      - "COO_PRV_KEY=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-3:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--cooBootstrap"
+      - "--cooStartIndex=1"
+      - "--inx.address=172.18.211.13:9029"
+    profiles:
+      - bootstrap
+
+  inx-tendercoo-3:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.23
+    environment:
+      - "COO_PRV_KEY=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-3:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.13:9029"
+    profiles:
+      - run
+
+  coo-4:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.14
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    stop_grace_period: 5m
+    ports:
+      - "14268:14265/tcp"
+      - "15603:15600/tcp"
+      - "8084:8081/tcp"
+      - "9314:9311/tcp"
+    cap_drop:
+      - ALL
+    volumes:
+      - ./config_private_tangle.json:/app/config_private_tangle.json:ro
+      - ./privatedb/coo-4:/app/privatedb
+      - ./snapshots/coo-4:/app/snapshots
+    command:
+      - "-c"
+      - "config_private_tangle.json"
+      - "--node.alias=coo-4"
+      - "--inx.bindAddress=172.18.211.14:9029"
+      - "--p2p.identityPrivateKey=996dceaeddcb5fc21480646f38ac53c4f5668fd33f3c0bfecfd004861d4a9dc722355dabd7f31a1266423abcf6c1db6228eb8283deb55731915ed06bd2ca387e"
+      - "--p2p.peers=/ip4/172.18.211.11/tcp/15600/p2p/12D3KooWSagdVaCrS14GeJhM8CbQr41AW2PiYMgptTyAybCbQuEY,/ip4/172.18.211.12/tcp/15600/p2p/12D3KooWCKwcTWevoRKa2kEBputeGASvEBuDfRDSbe8t1DWugUmL,/ip4/172.18.211.13/tcp/15600/p2p/12D3KooWGdr8M5KX8KuKaXSiKfHJstdVnRkadYmupF7tFk2HrRoA"
+      - "--p2p.peerAliases=coo-1,coo-2,coo-3"
+    profiles:
+      - bootstrap
+      - run
+
+  inx-tendercoo-4-bootstrap:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.24
+    environment:
+      - "COO_PRV_KEY=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-4:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--cooBootstrap"
+      - "--cooStartIndex=1"
+      - "--inx.address=172.18.211.14:9029"
+    profiles:
+      - bootstrap
+
+  inx-tendercoo-4:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.24
+    environment:
+      - "COO_PRV_KEY=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
+    volumes:
+      - ./config_coo.json:/app/config.json:ro
+      - ./privatedb/tendermint-4:/app/tendermint
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.14:9029"
+    profiles:
+      - run
+
+  hornet-1:
+    image: iotaledger/hornet:dev
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.31
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    stop_grace_period: 5m
+    cap_drop:
+      - ALL
+    volumes:
+      - ./config_private_tangle.json:/app/config_private_tangle.json:ro
+      - ./privatedb/hornet-1:/app/privatedb
+      - ./snapshots/hornet-1:/app/snapshots
+    command:
+      - "-c"
+      - "config_private_tangle.json"
+      - "--node.alias=hornet-1"
+      - "--inx.bindAddress=172.18.211.31:9029"
+      - "--p2p.identityPrivateKey=341b5031b5496e20a787695430c60a4a6f4eb0db27b277a4269756fa589ed206bdf7c74ddcf6dba4916a87326247a451058e7d7a15b511da8c1c601d92da55c4"
+      - "--p2p.peers=/ip4/172.18.211.11/tcp/15600/p2p/12D3KooWSagdVaCrS14GeJhM8CbQr41AW2PiYMgptTyAybCbQuEY,/ip4/172.18.211.12/tcp/15600/p2p/12D3KooWCKwcTWevoRKa2kEBputeGASvEBuDfRDSbe8t1DWugUmL,/ip4/172.18.211.13/tcp/15600/p2p/12D3KooWGdr8M5KX8KuKaXSiKfHJstdVnRkadYmupF7tFk2HrRoA,/ip4/172.18.211.14/tcp/15600/p2p/12D3KooWC7uE9w3RN4Vh1FJAZa8SbE8yMWR6wCVBajcWpyWguV73"
+      - "--p2p.peerAliases=coo-1,coo-2,coo-3,coo-4"
+    profiles:
+      - run
+
+  inx-spammer:
+    image: iotaledger/inx-spammer:0.2
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.41
+    restart: on-failure
+    ports:
+      - "9092:9092/tcp"
+    volumes:
+      - ./config_spammer.json:/app/config.json:ro
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.31:9029"
+      - "--spammer.bindAddress=172.18.211.41:9092"
+    profiles:
+      - run
+
+networks:
+  peering_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.18.211.0/24"

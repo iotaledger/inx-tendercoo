@@ -3,3 +3,6 @@
 .idea
 inx-coordinator
 .DS_Store
+
+private_tangle/snapshots
+private_tangle/privatedb
