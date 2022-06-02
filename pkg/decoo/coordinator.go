@@ -133,7 +133,11 @@ func (c *Coordinator) InitState(bootstrap bool, state *State) error {
 		return nil
 	}
 
-	if err := c.loadAppState(); err != nil {
+	if !stateExists {
+		// TODO: do not initialize to arbitrary defaults
+		c.currAppState.Reset(State{CurrentMilestoneIndex: 1})
+		c.lastAppState.Reset(State{CurrentMilestoneIndex: 1})
+	} else if err := c.loadAppState(); err != nil {
 		return err
 	}
 
