@@ -50,8 +50,9 @@ const (
 // ValidatorsConfig defines the config options for one validator.
 // TODO: what is the best way to define PubKey as a [32]byte
 type ValidatorsConfig struct {
-	PubKey string `json:"pubKey" koanf:"pubKey"`
-	Power  int64  `json:"power" koanf:"power"`
+	PubKey  string `json:"pubKey" koanf:"pubKey"`
+	Power   int64  `json:"power" koanf:"power"`
+	Address string `json:"address" koanf:"address"`
 }
 
 func init() {

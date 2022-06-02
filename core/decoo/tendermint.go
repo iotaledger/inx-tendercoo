@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/iotaledger/hive.go/logger"
@@ -102,18 +103,27 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
+	ownPubKey := privKey.PubKey()
 	var genesisValidators []tmtypes.GenesisValidator
+	var peers []string
 	for name, validator := range ParamsCoordinator.Tendermint.Validators {
-		var pubKey types.Byte32
-		if err := pubKey.Set(validator.PubKey); err != nil {
+		var pubKeyBytes types.Byte32
+		if err := pubKeyBytes.Set(validator.PubKey); err != nil {
 			return nil, nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
 		}
+		pubKey := tmed25519.PubKey(pubKeyBytes[:])
 		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
-			PubKey: tmed25519.PubKey(pubKey[:]),
+			PubKey: pubKey,
 			Power:  validator.Power,
 			Name:   name,
 		})
+		if !ownPubKey.Equals(pubKey) {
+			nodeID := tmtypes.NodeIDFromPubKey(pubKey)
+			peers = append(peers, nodeID.AddressString(validator.Address))
+		}
 	}
+
+	conf.P2P.PersistentPeers = strings.Join(peers, ",")
 
 	gen := &tmtypes.GenesisDoc{
 		GenesisTime:   time.Unix(ParamsCoordinator.Tendermint.GenesisTime, 0),
