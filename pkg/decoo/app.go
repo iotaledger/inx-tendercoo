@@ -242,7 +242,11 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 
 		// create and issue the milestone message, if its index is new and the coordinator is running
 		if c.started.Load() {
-			if latest, err := c.nodeBridge.LatestMilestone(); err != nil && c.currAppState.CurrentMilestoneIndex > latest.Milestone.Index {
+			latest, err := c.nodeBridge.LatestMilestone()
+			if err != nil {
+				panic(err)
+			}
+			if latest == nil || c.currAppState.CurrentMilestoneIndex > latest.Milestone.Index {
 				// TODO: what do we do if this fails?
 				go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
 			}
