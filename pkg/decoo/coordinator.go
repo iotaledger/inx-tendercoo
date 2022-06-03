@@ -127,14 +127,11 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 
 // Start starts the coordinator using the provided Tendermint RPC client.
 func (c *Coordinator) Start(ctx context.Context, cl client.Client) error {
-	if !cl.IsRunning() {
-		return errors.New("client not running")
-	}
 	c.ctx = ctx
 	c.client = cl
 	c.started.Store(true)
 
-	c.log.Infow("coordinator stated", "pubKey", c.committee.ID())
+	c.log.Infow("coordinator started", "pubKey", c.committee.ID())
 	return nil
 }
 
@@ -171,8 +168,7 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 		panic(err)
 	}
 
-	type stripped *tendermint.Parent // ignore ugly protobuf String() method
-	c.log.Debugw("broadcast tx", "parent", stripped(parent))
+	c.log.Debugw("broadcast parent", "Index", index, "BlockId", blockID)
 	c.broadcastQueue.Submit(ParentKey, tx)
 	return nil
 }
@@ -229,7 +225,7 @@ func (c *Coordinator) marshalTx(m proto.Message) ([]byte, error) {
 
 func (c *Coordinator) broadcastTx(tx []byte) error {
 	if !c.started.Load() {
-		return errors.New("not running")
+		return ErrNotStarted
 	}
 	_, err := c.client.BroadcastTxSync(c.ctx, tx)
 	return err

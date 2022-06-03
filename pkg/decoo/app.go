@@ -183,11 +183,7 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 			panic(err)
 		}
 
-		type stripped *tendermint.PartialSignature // ignore ugly protobuf String() method
-		c.log.Debugw("broadcast tx", "partial", stripped(partial))
-
-		// submit the partial signature for broadcast
-		// keep at most one partial signature in the queue
+		c.log.Debugw("broadcast partial", "Index", partial.Index, "MilestoneSignature", partial.MilestoneSignature)
 		c.broadcastQueue.Submit(PartialKey, tx)
 	}
 
@@ -282,15 +278,14 @@ func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint
 		panic(err)
 	}
 
-	type stripped *tendermint.Proof // ignore ugly protobuf String() method
-	c.log.Debugw("broadcast tx", "proof", stripped(proof))
-
 	// submit the proof for broadcast
 	// keep at most one parent per issuer in the queue
 	member, ok := c.committee.MemberIndex(issuer)
 	if !ok {
 		panic("coordinator: issuer has no index")
 	}
+
+	c.log.Debugw("broadcast proof", "member", member, "index", index, "blockID", blockID)
 	c.broadcastQueue.Submit(ProofKey+member, tx)
 }
 

@@ -18,7 +18,7 @@ import (
 
 var merkle = whiteflag.NewHasher(crypto.BLAKE2b_256)
 
-func (c *Coordinator) computeMerkleTreeHash(ctx context.Context, msIndex uint32, msTimestamp uint32, parents iotago.BlockIDs, previousMilestoneId iotago.MilestoneID) (inclMerkleProof iotago.MilestoneMerkleProof, appliedMerkleProof iotago.MilestoneMerkleProof, err error) {
+func (c *Coordinator) computeMerkleTreeHash(ctx context.Context, msIndex uint32, msTimestamp uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) (inclMerkleProof iotago.MilestoneMerkleProof, appliedMerkleProof iotago.MilestoneMerkleProof, err error) {
 	latest, err := c.nodeBridge.LatestMilestone()
 	if err != nil {
 		return inclMerkleProof, appliedMerkleProof, fmt.Errorf("failed to query latest milestone: %w", err)
@@ -40,7 +40,7 @@ func (c *Coordinator) computeMerkleTreeHash(ctx context.Context, msIndex uint32,
 		MilestoneIndex:      msIndex,
 		MilestoneTimestamp:  msTimestamp,
 		Parents:             inx.NewBlockIds(parents),
-		PreviousMilestoneId: inx.NewMilestoneId(previousMilestoneId),
+		PreviousMilestoneId: inx.NewMilestoneId(previousMilestoneID),
 	}
 	res, err := c.nodeBridge.Client().ComputeWhiteFlag(ctx, req)
 	if err != nil {

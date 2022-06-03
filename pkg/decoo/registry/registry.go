@@ -13,6 +13,7 @@ import (
 // ErrAlreadyRegistered is returned when a callback for the same block ID has already been registered.
 var ErrAlreadyRegistered = errors.New("block ID is already registered")
 
+// EventRegisterer defines the event functions.
 type EventRegisterer interface {
 	RegisterBlockSolidEvent(iotago.BlockID) chan struct{}
 	DeregisterBlockSolidEvent(id iotago.BlockID)

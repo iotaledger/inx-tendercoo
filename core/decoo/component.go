@@ -84,9 +84,9 @@ var (
 
 	latestMilestone struct {
 		sync.Mutex
-		MilestoneInfo
+		milestoneInfo
 	}
-	newMilestoneSignal chan MilestoneInfo
+	newMilestoneSignal chan milestoneInfo
 	trackBlocks        atomic.Bool
 
 	// closures
@@ -198,24 +198,24 @@ func processMilestone(milestone *iotago.Milestone) {
 	latestMilestone.Lock()
 	defer latestMilestone.Unlock()
 
-	if milestone.Index < latestMilestone.Index+1 {
+	if milestone.Index < latestMilestone.index+1 {
 		return
 	}
 
-	latestMilestone.Index = milestone.Index
-	latestMilestone.MilestoneBlockID = decoo.MilestoneBlockID(milestone)
-	newMilestoneSignal <- latestMilestone.MilestoneInfo
+	latestMilestone.index = milestone.Index
+	latestMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
+	newMilestoneSignal <- latestMilestone.milestoneInfo
 }
 
 func configure() error {
 	trackBlocks.Store(true)
-	newMilestoneSignal = make(chan MilestoneInfo, 1)
+	newMilestoneSignal = make(chan milestoneInfo, 1)
 	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
-		latestMilestone.Index = startIndex - 1
-		latestMilestone.MilestoneBlockID = startMilestoneBlockID
+		latestMilestone.index = startIndex - 1
+		latestMilestone.milestoneBlockID = startMilestoneBlockID
 		// trigger issuing a milestone for that index
-		newMilestoneSignal <- latestMilestone.MilestoneInfo
+		newMilestoneSignal <- latestMilestone.milestoneInfo
 	}
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
@@ -232,7 +232,7 @@ func configure() error {
 
 				// if a new milestone has already been received, there is no need to preemptively trigger it
 				select {
-				case newMilestoneSignal <- latestMilestone.MilestoneInfo:
+				case newMilestoneSignal <- latestMilestone.milestoneInfo:
 				default:
 				}
 			}
@@ -307,9 +307,9 @@ func run() error {
 	return nil
 }
 
-type MilestoneInfo struct {
-	Index            uint32
-	MilestoneBlockID iotago.BlockID
+type milestoneInfo struct {
+	index            uint32
+	milestoneBlockID iotago.BlockID
 }
 
 func coordinatorLoop(ctx context.Context) {
@@ -328,7 +328,7 @@ func coordinatorLoop(ctx context.Context) {
 
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
-	var info MilestoneInfo
+	var info milestoneInfo
 	for {
 		select {
 		case <-timer.C: // propose a parent for the milestone with index
@@ -336,11 +336,11 @@ func coordinatorLoop(ctx context.Context) {
 			if err != nil {
 				CoreComponent.LogWarnf("failed to select tips: %s", err)
 				// use the previous milestone block as fallback
-				tips = iotago.BlockIDs{info.MilestoneBlockID}
+				tips = iotago.BlockIDs{info.milestoneBlockID}
 			}
 			// until the actual milestone is received, the job of the tip selector is done
 			trackBlocks.Store(false)
-			if err := deps.Coordinator.ProposeParent(info.Index+1, tips[0]); err != nil {
+			if err := deps.Coordinator.ProposeParent(info.index+1, tips[0]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
 

@@ -39,9 +39,11 @@ func (b *Byte32) UnmarshalText(text []byte) error {
 	return err
 }
 
-func (b *Byte32) Set(val string) error {
+// Set sets a 32-byte array from the given string.
+// If the given string is not parsable, an error is returned.
+func (b *Byte32) Set(s string) error {
 	// pflag always trims string values, so we should do the same
-	trimmed := strings.TrimSpace(val)
+	trimmed := strings.TrimSpace(s)
 	if l := len(trimmed); l != hex.EncodedLen(len(Byte32{})) {
 		return fmt.Errorf("invalid length: %d", l)
 	}
@@ -53,6 +55,7 @@ func (b *Byte32) Set(val string) error {
 	return nil
 }
 
-func (b *Byte32) String() string { return hex.EncodeToString(b[:]) }
-
+// Type returns the type of the option
 func (b *Byte32) Type() string { return "byte32Hex" }
+
+func (b *Byte32) String() string { return hex.EncodeToString(b[:]) }

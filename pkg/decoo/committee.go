@@ -14,6 +14,7 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 )
 
+// ID is a simple peer ID.
 type ID = types.Byte32
 
 // Committee defines a committee of signers.
