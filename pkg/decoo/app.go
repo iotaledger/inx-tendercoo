@@ -11,7 +11,6 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/builder"
 	"github.com/tendermint/tendermint/abci/types"
-	"golang.org/x/crypto/blake2b"
 )
 
 // the coordinator must implement all functions of an ABCI application
@@ -35,10 +34,10 @@ func (c *Coordinator) Info(req types.RequestInfo) types.ResponseInfo {
 	defer c.lastAppState.RUnlock()
 
 	return types.ResponseInfo{
-		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.lastAppState.CurrentMilestoneIndex),
+		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.lastAppState.MilestoneIndex),
 		AppVersion:       ProtocolVersion,
 		LastBlockHeight:  c.lastAppState.Height,
-		LastBlockAppHash: c.lastAppStateHash,
+		LastBlockAppHash: c.lastAppState.Hash(),
 	}
 }
 
@@ -152,13 +151,14 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
 
 		// compute merkle tree root
-		inclMerkleProof, appliedMerkleRoot, err := c.computeMerkleTreeHash(context.Background(), c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
+		inclMerkleProof, appliedMerkleRoot, err := c.computeMerkleTreeHash(context.Background(), c.currAppState.MilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
 
 		// create milestone essence
-		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.CurrentMilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, inclMerkleProof, appliedMerkleRoot)
+		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.MilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, inclMerkleProof, appliedMerkleRoot)
+		c.currAppState.Milestone.Metadata = c.currAppState.Metadata()
 
 		// proofs are no longer needed for this milestone
 		c.currAppState.ProofsByBlockID = nil
@@ -175,7 +175,7 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 			panic(err)
 		}
 		partial := &tendermint.PartialSignature{
-			Index:              c.currAppState.CurrentMilestoneIndex,
+			Index:              c.currAppState.MilestoneIndex,
 			MilestoneSignature: c.committee.Sign(essence).Signature[:],
 		}
 		tx, err := c.marshalTx(partial)
@@ -216,7 +216,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 			}
 			c.log.Debugw("awaiting parent", "blockID", blockID)
 
-			issuer, index := issuer, c.currAppState.CurrentMilestoneIndex
+			issuer, index := issuer, c.currAppState.MilestoneIndex
 			c.registry.RegisterCallback(blockID, func(blockID iotago.BlockID) {
 				c.processParent(issuer, index, blockID)
 			})
@@ -244,40 +244,29 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 		if c.started.Load() {
 			latest, err := c.nodeBridge.LatestMilestone()
 			if err != nil {
-				panic(err)
+				c.log.Errorf("failed to get latest milestone: %s", err)
 			}
-			if latest == nil || c.currAppState.CurrentMilestoneIndex > latest.Milestone.Index {
+			if latest == nil || c.currAppState.MilestoneIndex > latest.Milestone.Index {
 				// TODO: what do we do if this fails?
 				go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
 			}
 		}
 
 		// reset the state for the next milestone
-		state := State{
-			Height:                c.currAppState.Height,
-			CurrentMilestoneIndex: c.currAppState.CurrentMilestoneIndex + 1,
-			LastMilestoneID:       c.currAppState.MilestoneID(),
-			LastMilestoneBlockID:  MilestoneBlockID(c.currAppState.Milestone),
+		state := &State{
+			MilestoneHeight:      c.currAppState.Height,
+			MilestoneIndex:       c.currAppState.MilestoneIndex + 1,
+			LastMilestoneID:      MilestoneID(c.currAppState.Milestone),
+			LastMilestoneBlockID: MilestoneBlockID(c.currAppState.Milestone),
 		}
-		c.currAppState.Reset(state)
+		c.currAppState.Reset(c.currAppState.Height, state)
 		c.registry.Clear()
 	}
 
-	// persist the application state to DB
-	stateBytes := mustMarshal(&c.currAppState)
-	if err := c.db.Set(stateDBKey, stateBytes); err != nil {
-		c.log.Fatalf("failed to set database coordinator status: %e", err)
-	}
 	// make a deep copy of the state
-	c.lastAppState.Reset(State{})
-	if err := c.lastAppState.UnmarshalBinary(stateBytes); err != nil {
-		panic(err)
-	}
-	// compute the hash of that state
-	hash := blake2b.Sum256(stateBytes)
-	c.lastAppStateHash = hash[:]
+	c.lastAppState.Copy(&c.currAppState)
 
-	return types.ResponseCommit{Data: c.lastAppStateHash}
+	return types.ResponseCommit{Data: c.lastAppState.Hash()}
 }
 
 func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, blockID iotago.BlockID) {
@@ -326,6 +315,16 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	return nil
 }
 
+// MilestoneID returns the block ID of the given milestone.
+func MilestoneID(ms *iotago.Milestone) iotago.MilestoneID {
+	id, err := ms.ID()
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+// MilestoneBlockID returns the block ID of the given milestone.
 func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
 	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(ms).Build()
 	if err != nil {

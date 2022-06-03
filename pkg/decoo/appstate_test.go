@@ -2,6 +2,7 @@ package decoo_test
 
 import (
 	"math/rand"
+	"reflect"
 	"testing"
 
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
@@ -13,14 +14,74 @@ import (
 
 type void = struct{}
 
-func TestState_Encoding(t *testing.T) {
-	// create random state
-	s := &decoo.AppState{
+func TestAppState_Encoding(t *testing.T) {
+	s := randState()
+	b, err := s.MarshalBinary()
+	require.NoError(t, err)
+	t.Logf("%s", b)
+
+	// the unmarshalled state must match the original
+	s2 := &decoo.AppState{}
+	require.NoError(t, s2.UnmarshalBinary(b))
+	require.Equal(t, s, s2)
+
+	// test that the serialization is deterministic
+	for i := 0; i < 100; i++ {
+		// create a new deep copy
+		cpy := &decoo.AppState{}
+		require.NoError(t, cpy.UnmarshalBinary(b))
+		// serialization must be identical
+		cpyBytes, err := cpy.MarshalBinary()
+		require.NoError(t, err)
+		require.Equal(t, b, cpyBytes)
+	}
+}
+
+func TestAppState_Reset(t *testing.T) {
+	s := randState()
+	s.Reset(0, &decoo.State{})
+	require.NotEqual(t, &decoo.AppState{}, s)
+
+	// all maps must be initialized
+	v := reflect.Indirect(reflect.ValueOf(s))
+	for i := 0; i < v.NumField(); i++ {
+		name := v.Type().Field(i).Name
+		if v := v.Field(i); v.CanSet() {
+			if v.Kind() == reflect.Map {
+				require.Falsef(t, v.IsNil(), "map %s is not initialized", name)
+			}
+		}
+	}
+}
+
+func TestAppState_Copy(t *testing.T) {
+	// test that a random state is copied
+	s := &decoo.AppState{}
+	random := randState()
+	s.Copy(random)
+	require.Equal(t, random, s)
+
+	// test that an empty state is copied
+	s = randState()
+	s.Copy(&decoo.AppState{})
+	require.Equal(t, &decoo.AppState{}, s)
+
+	// test that a reset state is copied
+	s = randState()
+	reset := &decoo.AppState{}
+	reset.Reset(0, &decoo.State{})
+	s.Copy(reset)
+	require.Equal(t, reset, s)
+}
+
+func randState() *decoo.AppState {
+	return &decoo.AppState{
+		Height: rand.Int63(),
 		State: decoo.State{
-			Height:                rand.Int63(),
-			CurrentMilestoneIndex: rand.Uint32(),
-			LastMilestoneID:       tpkg.Rand32ByteArray(),
-			LastMilestoneBlockID:  tpkg.Rand32ByteArray(),
+			MilestoneHeight:      rand.Int63(),
+			MilestoneIndex:       rand.Uint32(),
+			LastMilestoneID:      tpkg.Rand32ByteArray(),
+			LastMilestoneBlockID: tpkg.Rand32ByteArray(),
 		},
 		Timestamp: rand.Uint32(),
 		ParentByIssuer: map[types.Byte32]iotago.BlockID{
@@ -40,25 +101,5 @@ func TestState_Encoding(t *testing.T) {
 			tpkg.Rand32ByteArray(): tpkg.RandEd25519Signature(),
 			tpkg.Rand32ByteArray(): tpkg.RandEd25519Signature(),
 		},
-	}
-
-	b, err := s.MarshalBinary()
-	require.NoError(t, err)
-	t.Logf("%s", b)
-
-	// the unmarshalled state must match the original
-	s2 := &decoo.AppState{}
-	require.NoError(t, s2.UnmarshalBinary(b))
-	require.Equal(t, s, s2)
-
-	// test that the serialization is deterministic
-	for i := 0; i < 100; i++ {
-		// create a new deep copy
-		cpy := &decoo.AppState{}
-		require.NoError(t, cpy.UnmarshalBinary(b))
-		// serialization must be identical
-		cpyBytes, err := cpy.MarshalBinary()
-		require.NoError(t, err)
-		require.Equal(t, b, cpyBytes)
 	}
 }

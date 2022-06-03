@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
@@ -16,7 +15,6 @@ import (
 	"github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/rpc/client"
 	"go.uber.org/atomic"
-	"golang.org/x/crypto/blake2b"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -26,18 +24,12 @@ const (
 )
 
 var (
-	// ErrNetworkBootstrapped is returned when the flag for bootstrap network was given, but a state file already exists.
-	ErrNetworkBootstrapped = errors.New("network already bootstrapped")
 	// ErrTooManyValidators is returned when the committee size is too large.
 	ErrTooManyValidators = errors.New("too many validators")
 	// ErrNotStarted is returned when the coordinator has not been started.
 	ErrNotStarted = errors.New("coordinator not started")
 	// ErrIndexBehindAppState is returned when the proposed index is older than the app state.
 	ErrIndexBehindAppState = errors.New("milestone index behind app state")
-)
-
-var (
-	stateDBKey = []byte("dbState")
 )
 
 // keys for the broadcastQueue
@@ -48,30 +40,17 @@ const (
 	ProofKey = 0xff // proofs are special as there can be multiple proofs in the queue at the same time
 )
 
-type State struct {
-	// Height denotes the height of the current Tendermint blockchain.
-	Height int64
-	// CurrentMilestoneIndex denotes the index of the milestone that is currently being constructed.
-	CurrentMilestoneIndex uint32
-	// LastMilestoneID denotes the ID of the previous milestone.
-	LastMilestoneID iotago.MilestoneID
-	// LastMilestoneBlockID denotes the ID of a block containing the previous milestone.
-	LastMilestoneBlockID iotago.BlockID
-}
-
 // Coordinator is a Tendermint based decentralized coordinator.
 type Coordinator struct {
 	types.BaseApplication // act as a ABCI application for Tendermint
 
-	db         kvstore.KVStore
 	committee  *Committee
 	nodeBridge *nodebridge.NodeBridge
 	log        *logger.Logger
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
-	currAppState     AppState
-	lastAppState     AppState
-	lastAppStateHash []byte
+	currAppState AppState
+	lastAppState AppState
 
 	ctx     context.Context
 	client  client.Client // Tendermint RPC
@@ -83,7 +62,7 @@ type Coordinator struct {
 }
 
 // New creates a new Coordinator.
-func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener *nodebridge.TangleListener, log *logger.Logger) (*Coordinator, error) {
+func New(committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener *nodebridge.TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be at least one honest parent in each milestone
 	if committee.T() > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -94,7 +73,6 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 	}
 
 	c := &Coordinator{
-		db:         db,
 		committee:  committee,
 		nodeBridge: nodeBridge,
 		log:        log,
@@ -107,41 +85,43 @@ func New(db kvstore.KVStore, committee *Committee, nodeBridge *nodebridge.NodeBr
 
 // InitState initializes the Coordinator.
 // It needs to be called before Start.
-func (c *Coordinator) InitState(bootstrap bool, state *State) error {
-	stateExists, err := c.db.Has(stateDBKey)
+func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+	latest, err := c.nodeBridge.LatestMilestone()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get latest milestone: %w", err)
 	}
 
-	c.currAppState.Lock()
-	defer c.currAppState.Unlock()
-	c.lastAppState.Lock()
-	defer c.lastAppState.Unlock()
-
-	if bootstrap {
-		if stateExists {
-			return ErrNetworkBootstrapped
+	// try to resume the network
+	if !bootstrap {
+		if latest == nil {
+			return fmt.Errorf("resume failed: no milestone available")
+		}
+		state, err := NewStateFromMilestone(latest.Milestone)
+		if err != nil {
+			return fmt.Errorf("resume failed: milestone %d contains invalid metadata: %w", latest.Milestone.Index, err)
 		}
 
-		// there is no need to specify the Tendermint block height during bootstrapping
-		// if a Tendermint blockchain is present, the state can be reconstructed from it, and it is not bootstrapping
-		c.currAppState.Reset(*state)
-		c.lastAppState.Reset(*state)
-		c.lastAppStateHash = c.lastAppState.Hash()
-
-		c.log.Infow("coordinator bootstrapped", "state", state)
+		c.initState(state.MilestoneHeight, state)
+		c.log.Infow("coordinator resumed", "state", state)
 		return nil
 	}
 
-	if !stateExists {
-		// TODO: do not initialize to arbitrary defaults
-		c.currAppState.Reset(State{CurrentMilestoneIndex: 1})
-		c.lastAppState.Reset(State{CurrentMilestoneIndex: 1})
-	} else if err := c.loadAppState(); err != nil {
-		return err
+	// assure that we do not re-bootstrap a network
+	if latest != nil {
+		if _, err := NewStateFromMilestone(latest.Milestone); err == nil {
+			return fmt.Errorf("bootstrap failed: milestone %d contains a valid state", latest.Milestone.Index)
+		}
 	}
 
-	c.log.Infow("coordinator resumed", "index", c.currAppState.CurrentMilestoneIndex, "previousMilestoneID", c.currAppState.LastMilestoneID)
+	// create a genesis state
+	state := &State{
+		MilestoneHeight:      0,
+		MilestoneIndex:       index,
+		LastMilestoneID:      milestoneID,
+		LastMilestoneBlockID: milestoneBlockID,
+	}
+	c.initState(0, state)
+	c.log.Infow("coordinator bootstrapped", "state", state)
 	return nil
 }
 
@@ -154,7 +134,7 @@ func (c *Coordinator) Start(ctx context.Context, cl client.Client) error {
 	c.client = cl
 	c.started.Store(true)
 
-	c.log.Infow("coordinator stated", "pubKey", c.committee.ID(), "validators", c.committee)
+	c.log.Infow("coordinator stated", "pubKey", c.committee.ID())
 	return nil
 }
 
@@ -172,7 +152,7 @@ func (c *Coordinator) Stop() error {
 func (c *Coordinator) StateMilestoneIndex() uint32 {
 	c.lastAppState.RLock()
 	defer c.lastAppState.RUnlock()
-	return c.lastAppState.CurrentMilestoneIndex
+	return c.lastAppState.MilestoneIndex
 }
 
 // ProposeParent proposes a parent for the milestone with the given index.
@@ -197,21 +177,14 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	return nil
 }
 
-func (c *Coordinator) loadAppState() error {
-	data, err := c.db.Get(stateDBKey)
-	if err != nil {
-		return fmt.Errorf("failed to get database Coordinator status: %w", err)
-	}
+func (c *Coordinator) initState(height int64, state *State) {
+	c.currAppState.Lock()
+	defer c.currAppState.Unlock()
+	c.lastAppState.Lock()
+	defer c.lastAppState.Unlock()
 
-	if err := c.currAppState.UnmarshalBinary(data); err != nil {
-		return fmt.Errorf("invalid database Coordinator status data: %w", err)
-	}
-	if err := c.lastAppState.UnmarshalBinary(data); err != nil {
-		return fmt.Errorf("invalid database Coordinator status data: %w", err)
-	}
-	hash := blake2b.Sum256(data)
-	c.lastAppStateHash = hash[:]
-	return nil
+	c.currAppState.Reset(height, state)
+	c.lastAppState.Reset(height, state)
 }
 
 // unmarshalTx parses the wire-format message in b and returns the verified issuer as well as the message m.
