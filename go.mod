@@ -12,7 +12,7 @@ require (
 	github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.1
-	github.com/tendermint/tendermint v0.35.5
+	github.com/tendermint/tendermint v0.35.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/dig v1.14.1
 	go.uber.org/zap v1.21.0
