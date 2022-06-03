@@ -3,8 +3,8 @@ package decoo
 import (
 	"crypto/ed25519"
 	"errors"
-	"fmt"
 
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
@@ -14,7 +14,7 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 )
 
-type ID = [32]byte
+type ID = types.Byte32
 
 // Committee defines a committee of signers.
 type Committee struct {
@@ -70,10 +70,6 @@ func (v *Committee) Members() iotago.MilestonePublicKeySet {
 		set[id] = struct{}{}
 	}
 	return set
-}
-
-func (v *Committee) String() string {
-	return fmt.Sprint(v.indexByID)
 }
 
 // MemberIndex returns the index of the provided peer.

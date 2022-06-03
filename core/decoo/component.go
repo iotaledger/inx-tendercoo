@@ -12,7 +12,6 @@ import (
 
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
@@ -140,18 +139,12 @@ func provide(c *dig.Container) error {
 		}
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 
-		// TODO: handle state storage
-		coo, err := decoo.New(mapdb.NewMapDB(), committee, deps.NodeBridge, deps.TangleListener, CoreComponent.Logger())
+		coo, err := decoo.New(committee, deps.NodeBridge, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
 		// load the state or initialize with the given values
-		err = coo.InitState(bootstrap, &decoo.State{
-			Height:                0,
-			CurrentMilestoneIndex: startIndex,
-			LastMilestoneID:       startMilestoneID,
-			LastMilestoneBlockID:  startMilestoneBlockID,
-		})
+		err = coo.InitState(bootstrap, startIndex, startMilestoneID, startMilestoneBlockID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize: %w", err)
 		}

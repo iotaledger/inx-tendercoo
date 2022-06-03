@@ -15,6 +15,10 @@ import (
 type AppState struct {
 	sync.RWMutex
 
+	// Height denotes the height of the Tendermint blockchain.
+	Height int64
+
+	// State contains the coordinator state.
 	State
 
 	// Timestamp denotes the time of the last block header.
@@ -41,8 +45,9 @@ func (a *AppState) MarshalBinary() ([]byte, error) { return json.Marshal(a) }
 func (a *AppState) UnmarshalBinary(data []byte) error { return json.Unmarshal(data, a) }
 
 // Reset resets the complete state after a new milestone has been issued.
-func (a *AppState) Reset(state State) {
-	a.State = state
+func (a *AppState) Reset(height int64, state *State) {
+	a.Height = height
+	a.State = *state
 	a.Timestamp = 0
 	a.ParentByIssuer = map[types.Byte32]iotago.BlockID{}
 	a.IssuerCountByParent = map[types.Byte32]int{}
@@ -51,17 +56,25 @@ func (a *AppState) Reset(state State) {
 	a.SignaturesByIssuer = map[types.Byte32]*iotago.Ed25519Signature{}
 }
 
-func (a *AppState) MilestoneID() iotago.MilestoneID {
-	id, err := a.Milestone.ID()
+// Copy sets the AppState to a deep copy of o.
+func (a *AppState) Copy(o *AppState) {
+	data, err := o.MarshalBinary()
 	if err != nil {
 		panic(err)
 	}
-	return id
+	a.Reset(o.Height, &o.State)
+	if err := a.UnmarshalBinary(data); err != nil {
+		panic(err)
+	}
 }
 
 // Hash returns the BLAKE2b-256 hash of the state.
 func (a *AppState) Hash() []byte {
-	hash := blake2b.Sum256(mustMarshal(a))
+	buf, err := a.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	hash := blake2b.Sum256(buf)
 	return hash[:]
 }
 
@@ -71,7 +84,7 @@ func (a *AppState) CheckParent(p *tendermint.Parent) uint32 {
 		return CodeTypeSyntaxError
 	}
 	// index must not be in the past
-	if p.Index < a.CurrentMilestoneIndex {
+	if p.Index < a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// the block ID must have the correct length
@@ -84,7 +97,7 @@ func (a *AppState) CheckParent(p *tendermint.Parent) uint32 {
 // DeliverParent performs semantic validation on a Proof and updates the state accordingly.
 func (a *AppState) DeliverParent(issuer ed25519.PublicKey, p *tendermint.Parent, _ *Committee) uint32 {
 	// proof must match the current milestone index
-	if p.Index != a.CurrentMilestoneIndex {
+	if p.Index != a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// proofs are only relevant before we created a milestone
@@ -110,7 +123,7 @@ func (a *AppState) CheckProof(p *tendermint.Proof) uint32 {
 		return CodeTypeSyntaxError
 	}
 	// index must not be in the past
-	if p.Index < a.CurrentMilestoneIndex {
+	if p.Index < a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// the block ID must have the correct length
@@ -123,7 +136,7 @@ func (a *AppState) CheckProof(p *tendermint.Proof) uint32 {
 // DeliverProof performs semantic validation on a Proof and updates the state accordingly.
 func (a *AppState) DeliverProof(issuer ed25519.PublicKey, p *tendermint.Proof, _ *Committee) uint32 {
 	// proof must match the current milestone index
-	if p.Index != a.CurrentMilestoneIndex {
+	if p.Index != a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// proofs are only relevant before we created a milestone
@@ -156,7 +169,7 @@ func (a *AppState) CheckPartial(p *tendermint.PartialSignature) uint32 {
 		return CodeTypeSyntaxError
 	}
 	// index must not be in the past
-	if p.Index < a.CurrentMilestoneIndex {
+	if p.Index < a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// the MilestoneSignature must have the correct length
@@ -169,7 +182,7 @@ func (a *AppState) CheckPartial(p *tendermint.PartialSignature) uint32 {
 // DeliverPartial performs semantic validation on a PartialSignature and updates the state accordingly.
 func (a *AppState) DeliverPartial(issuer ed25519.PublicKey, p *tendermint.PartialSignature, committee *Committee) uint32 {
 	// signature must match the current milestone index
-	if p.Index != a.CurrentMilestoneIndex {
+	if p.Index != a.MilestoneIndex {
 		return CodeTypeStateError
 	}
 	// there must be a milestone essence to sign
