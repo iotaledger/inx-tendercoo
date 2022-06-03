@@ -50,6 +50,7 @@ services:
       - run
 
   inx-tendercoo-1-bootstrap:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -71,6 +72,7 @@ services:
       - bootstrap
 
   inx-tendercoo-1:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -123,6 +125,7 @@ services:
       - run
 
   inx-tendercoo-2-bootstrap:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -144,6 +147,7 @@ services:
       - bootstrap
 
   inx-tendercoo-2:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -196,6 +200,7 @@ services:
       - run
 
   inx-tendercoo-3-bootstrap:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -217,6 +222,7 @@ services:
       - bootstrap
 
   inx-tendercoo-3:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -269,6 +275,7 @@ services:
       - run
 
   inx-tendercoo-4-bootstrap:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
@@ -290,6 +297,7 @@ services:
       - bootstrap
 
   inx-tendercoo-4:
+    image: iotaledger/inx-tendercoo:dev
     build:
       context: ../
       dockerfile: Dockerfile
