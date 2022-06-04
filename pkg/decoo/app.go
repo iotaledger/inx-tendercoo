@@ -8,13 +8,14 @@ import (
 
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/builder"
-	"github.com/tendermint/tendermint/abci/types"
+	abcitypes "github.com/tendermint/tendermint/abci/types"
 )
 
 // the coordinator must implement all functions of an ABCI application
-var _ types.Application = (*Coordinator)(nil)
+var _ abcitypes.Application = (*Coordinator)(nil)
 
 // ABCI return codes
 const (
@@ -27,13 +28,13 @@ const (
 
 // Info is called during initialization to retrieve and validate application state.
 // LastBlockHeight is used to determine which blocks need to be replayed to the application during syncing.
-func (c *Coordinator) Info(req types.RequestInfo) types.ResponseInfo {
+func (c *Coordinator) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo {
 	c.log.Debugw("ABCI info", "req", req)
 
 	c.lastAppState.RLock()
 	defer c.lastAppState.RUnlock()
 
-	return types.ResponseInfo{
+	return abcitypes.ResponseInfo{
 		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.lastAppState.MilestoneIndex),
 		AppVersion:       ProtocolVersion,
 		LastBlockHeight:  c.lastAppState.Height,
@@ -42,19 +43,19 @@ func (c *Coordinator) Info(req types.RequestInfo) types.ResponseInfo {
 }
 
 // Query queries the application for information about application state.
-func (c *Coordinator) Query(req types.RequestQuery) types.ResponseQuery {
+func (c *Coordinator) Query(req abcitypes.RequestQuery) abcitypes.ResponseQuery {
 	c.log.Debugw("ABCI query", "req", req)
 
-	return types.ResponseQuery{Code: CodeTypeNotSupportedError}
+	return abcitypes.ResponseQuery{Code: CodeTypeNotSupportedError}
 }
 
 // CheckTx controls whether a given transactions is considered for inclusion in a block.
 // When a non-zero Code is returned, the transactions is discarded and not being gossiped to other peers.
 // To prevent race conditions when CheckTx is calling during processing of a new block, the previous state must be used.
-func (c *Coordinator) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx {
+func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
 	_, msg, err := c.unmarshalTx(req.Tx)
 	if err != nil {
-		return types.ResponseCheckTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError}
 	}
 
 	// all checks in CheckTx need to be performed against lastAppState to avoid race conditions
@@ -63,34 +64,34 @@ func (c *Coordinator) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx {
 
 	switch p := msg.(type) {
 	case *tendermint.Parent:
-		return types.ResponseCheckTx{Code: c.lastAppState.CheckParent(p)}
+		return abcitypes.ResponseCheckTx{Code: c.lastAppState.CheckParent(p)}
 	case *tendermint.Proof:
-		return types.ResponseCheckTx{Code: c.lastAppState.CheckProof(p)}
+		return abcitypes.ResponseCheckTx{Code: c.lastAppState.CheckProof(p)}
 	case *tendermint.PartialSignature:
-		return types.ResponseCheckTx{Code: c.lastAppState.CheckPartial(p)}
+		return abcitypes.ResponseCheckTx{Code: c.lastAppState.CheckPartial(p)}
 	default: // invalid tx type
-		return types.ResponseCheckTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError}
 	}
 }
 
 // BeginBlock is the first method called for each new block.
-func (c *Coordinator) BeginBlock(req types.RequestBeginBlock) types.ResponseBeginBlock {
+func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
 	c.currAppState.Lock()
 	defer c.currAppState.Unlock()
 
 	// use the timestamp from the header rounded down to seconds
 	c.currAppState.Timestamp = uint32(req.Header.Time.Unix())
-	return types.ResponseBeginBlock{}
+	return abcitypes.ResponseBeginBlock{}
 }
 
 // DeliverTx delivers transactions from Tendermint to the application.
 // It is called for each transaction in a block and will always be called between BeginBlock and EndBlock.
 // A block can contain invalid transactions if it was issued by a malicious peer, as such validity must
 // be checked in a deterministic way.
-func (c *Coordinator) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
+func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 	issuer, msg, err := c.unmarshalTx(req.Tx)
 	if err != nil {
-		return types.ResponseDeliverTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseDeliverTx{Code: CodeTypeSyntaxError}
 	}
 
 	// DeliverTx needs to rerun syntactic check against currAppState and perform semantic checks
@@ -100,28 +101,28 @@ func (c *Coordinator) DeliverTx(req types.RequestDeliverTx) types.ResponseDelive
 	switch p := msg.(type) {
 	case *tendermint.Parent:
 		if code := c.currAppState.CheckParent(p); code != 0 {
-			return types.ResponseDeliverTx{Code: code}
+			return abcitypes.ResponseDeliverTx{Code: code}
 		}
-		return types.ResponseDeliverTx{Code: c.currAppState.DeliverParent(issuer, p, c.committee)}
+		return abcitypes.ResponseDeliverTx{Code: c.currAppState.DeliverParent(issuer, p, c.committee)}
 	case *tendermint.Proof:
 		if code := c.currAppState.CheckProof(p); code != 0 {
-			return types.ResponseDeliverTx{Code: code}
+			return abcitypes.ResponseDeliverTx{Code: code}
 		}
-		return types.ResponseDeliverTx{Code: c.currAppState.DeliverProof(issuer, p, c.committee)}
+		return abcitypes.ResponseDeliverTx{Code: c.currAppState.DeliverProof(issuer, p, c.committee)}
 	case *tendermint.PartialSignature:
 		if code := c.currAppState.CheckPartial(p); code != 0 {
-			return types.ResponseDeliverTx{Code: code}
+			return abcitypes.ResponseDeliverTx{Code: code}
 		}
-		return types.ResponseDeliverTx{Code: c.currAppState.DeliverPartial(issuer, p, c.committee)}
+		return abcitypes.ResponseDeliverTx{Code: c.currAppState.DeliverPartial(issuer, p, c.committee)}
 	default: // invalid tx type
-		return types.ResponseDeliverTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseDeliverTx{Code: CodeTypeSyntaxError}
 	}
 }
 
 // EndBlock signals the end of a block.
 // It is called after all transactions for the current block have been delivered, prior to the block's Commit message.
 // Updates to the consensus parameters can only be updated in EndBlock.
-func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
+func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
 	c.currAppState.Lock()
 	defer c.currAppState.Unlock()
 
@@ -150,14 +151,13 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 
 		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
 
-		// compute merkle tree root
-		inclMerkleProof, appliedMerkleRoot, err := c.computeMerkleTreeHash(context.Background(), c.currAppState.MilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
+		inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(c.ctx, c.currAppState.MilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
 
 		// create milestone essence
-		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.MilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, inclMerkleProof, appliedMerkleRoot)
+		c.currAppState.Milestone = iotago.NewMilestone(c.currAppState.MilestoneIndex, c.currAppState.Timestamp, c.protoParas.Version, c.currAppState.LastMilestoneID, parents, types.Byte32FromSlice(inclMerkleRoot), types.Byte32FromSlice(appliedMerkleRoot))
 		c.currAppState.Milestone.Metadata = c.currAppState.Metadata()
 
 		// proofs are no longer needed for this milestone
@@ -187,13 +187,13 @@ func (c *Coordinator) EndBlock(types.RequestEndBlock) types.ResponseEndBlock {
 		c.broadcastQueue.Submit(PartialKey, tx)
 	}
 
-	return types.ResponseEndBlock{}
+	return abcitypes.ResponseEndBlock{}
 }
 
 // Commit signals the application to persist the application state.
 // Data must return the hash of the state after all changes from this block have been applied.
 // It will be used to validate consistency between the applications.
-func (c *Coordinator) Commit() types.ResponseCommit {
+func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	c.currAppState.Lock()
 	defer c.currAppState.Unlock()
 	c.lastAppState.Lock()
@@ -238,11 +238,11 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 
 		// create and issue the milestone block, if its index is new and the coordinator is running
 		if c.started.Load() {
-			latest, err := c.nodeBridge.LatestMilestone()
+			latest, err := c.inxClient.LatestMilestone()
 			if err != nil {
 				c.log.Errorf("failed to get latest milestone: %s", err)
 			}
-			if latest == nil || c.currAppState.MilestoneIndex > latest.Milestone.Index {
+			if latest == nil || c.currAppState.MilestoneIndex > latest.Index {
 				// TODO: what do we do if this fails?
 				go c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone)
 			}
@@ -262,7 +262,7 @@ func (c *Coordinator) Commit() types.ResponseCommit {
 	// make a deep copy of the state
 	c.lastAppState.Copy(&c.currAppState)
 
-	return types.ResponseCommit{Data: c.lastAppState.Hash()}
+	return abcitypes.ResponseCommit{Data: c.lastAppState.Hash()}
 }
 
 func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, blockID iotago.BlockID) {
@@ -301,7 +301,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
-	latestMilestoneBlockID, err := c.nodeBridge.SubmitBlock(ctx, msg)
+	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("emitting the block failed: %w", err)
 	}

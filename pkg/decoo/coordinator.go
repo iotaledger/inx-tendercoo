@@ -7,13 +7,13 @@ import (
 	"fmt"
 
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"
 	iotago "github.com/iotaledger/iota.go/v3"
-	"github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/rpc/client"
+	abcitypes "github.com/tendermint/tendermint/abci/types"
+	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
+	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/atomic"
 	"google.golang.org/protobuf/proto"
 )
@@ -40,29 +40,42 @@ const (
 	ProofKey = 0xff // proofs are special as there can be multiple proofs in the queue at the same time
 )
 
+// INXClient contains the functions used from the INX API.
+type INXClient interface {
+	ProtocolParameters() *iotago.ProtocolParameters
+	LatestMilestone() (*iotago.Milestone, error)
+
+	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
+	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
+}
+
+// ABCIClient contains the functions used from the ABCI API.
+type ABCIClient interface {
+	BroadcastTxSync(context.Context, tmtypes.Tx) (*tmcore.ResultBroadcastTx, error)
+}
+
 // Coordinator is a Tendermint based decentralized coordinator.
 type Coordinator struct {
-	types.BaseApplication // act as a ABCI application for Tendermint
+	abcitypes.BaseApplication // act as a ABCI application for Tendermint
 
-	committee  *Committee
-	nodeBridge *nodebridge.NodeBridge
-	log        *logger.Logger
+	committee      *Committee
+	inxClient      INXClient
+	registry       *registry.Registry
+	log            *logger.Logger
+	protoParas     *iotago.ProtocolParameters
+	broadcastQueue *queue.KeyedQueue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
 	currAppState AppState
 	lastAppState AppState
 
-	ctx     context.Context
-	client  client.Client // Tendermint RPC
-	started atomic.Bool
-
-	broadcastQueue *queue.KeyedQueue
-	protoParas     *iotago.ProtocolParameters
-	registry       *registry.Registry
+	ctx        context.Context
+	abciClient ABCIClient
+	started    atomic.Bool
 }
 
 // New creates a new Coordinator.
-func New(committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener *nodebridge.TangleListener, log *logger.Logger) (*Coordinator, error) {
+func New(committee *Committee, inxClient INXClient, registerer registry.EventRegisterer, log *logger.Logger) (*Coordinator, error) {
 	// there must be at least one honest parent in each milestone
 	if committee.T() > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -74,10 +87,10 @@ func New(committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener
 
 	c := &Coordinator{
 		committee:  committee,
-		nodeBridge: nodeBridge,
+		inxClient:  inxClient,
+		registry:   registry.New(registerer),
 		log:        log,
-		protoParas: nodeBridge.NodeConfig.UnwrapProtocolParameters(),
-		registry:   registry.New(tangleListener),
+		protoParas: inxClient.ProtocolParameters(),
 	}
 	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil
@@ -86,7 +99,7 @@ func New(committee *Committee, nodeBridge *nodebridge.NodeBridge, tangleListener
 // InitState initializes the Coordinator.
 // It needs to be called before Start.
 func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	latest, err := c.nodeBridge.LatestMilestone()
+	latest, err := c.inxClient.LatestMilestone()
 	if err != nil {
 		return fmt.Errorf("failed to get latest milestone: %w", err)
 	}
@@ -96,9 +109,9 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 		if latest == nil {
 			return fmt.Errorf("resume failed: no milestone available")
 		}
-		state, err := NewStateFromMilestone(latest.Milestone)
+		state, err := NewStateFromMilestone(latest)
 		if err != nil {
-			return fmt.Errorf("resume failed: milestone %d contains invalid metadata: %w", latest.Milestone.Index, err)
+			return fmt.Errorf("resume failed: milestone %d contains invalid metadata: %w", latest.Index, err)
 		}
 
 		c.initState(state.MilestoneHeight, state)
@@ -108,8 +121,8 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 
 	// assure that we do not re-bootstrap a network
 	if latest != nil {
-		if _, err := NewStateFromMilestone(latest.Milestone); err == nil {
-			return fmt.Errorf("bootstrap failed: milestone %d contains a valid state", latest.Milestone.Index)
+		if _, err := NewStateFromMilestone(latest); err == nil {
+			return fmt.Errorf("bootstrap failed: milestone %d contains a valid state", latest.Index)
 		}
 	}
 
@@ -126,9 +139,9 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 }
 
 // Start starts the coordinator using the provided Tendermint RPC client.
-func (c *Coordinator) Start(ctx context.Context, cl client.Client) error {
+func (c *Coordinator) Start(ctx context.Context, client ABCIClient) error {
 	c.ctx = ctx
-	c.client = cl
+	c.abciClient = client
 	c.started.Store(true)
 
 	c.log.Infow("coordinator started", "pubKey", c.committee.ID())
@@ -227,6 +240,6 @@ func (c *Coordinator) broadcastTx(tx []byte) error {
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
-	_, err := c.client.BroadcastTxSync(c.ctx, tx)
+	_, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
 	return err
 }
