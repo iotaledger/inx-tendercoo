@@ -13,7 +13,6 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/stretchr/testify/require"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
-	proto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
 	tmtypes "github.com/tendermint/tendermint/types"
 )
@@ -37,13 +36,15 @@ func TestSingleValidator(t *testing.T) {
 		solidBlocks:         map[iotago.BlockID]struct{}{iotago.EmptyBlockID(): {}},
 		blockSolidSyncEvent: events.NewSyncEvent(),
 	}
+	abci := &ABCIMock{}
 
 	t.Run("bootstrap", func(t *testing.T) {
 		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
 		require.NoError(t, c.InitState(true, 1, [32]byte{}, [32]byte{}))
-		require.NoError(t, c.Start(context.Background(), &ABCIMock{c}))
+		abci.Application = c
+		require.NoError(t, c.Start(context.Background(), abci))
 
 		for i := uint32(1); i < 10; i++ {
 			require.NoError(t, c.ProposeParent(i, inx.LatestMilestoneBlockID()))
@@ -57,8 +58,15 @@ func TestSingleValidator(t *testing.T) {
 		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
+		// init from state and replay missing transactions
 		require.NoError(t, c.InitState(false, 0, [32]byte{}, [32]byte{}))
-		require.NoError(t, c.Start(context.Background(), &ABCIMock{c}))
+		abci.Application = c
+		abci.Replay()
+		require.NoError(t, c.Start(context.Background(), abci))
+
+		index := inx.LatestMilestoneIndex() + 1
+		require.NoError(t, c.ProposeParent(index, inx.LatestMilestoneBlockID()))
+		require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == index }, time.Second, 10*time.Millisecond)
 		require.NoError(t, c.Stop())
 	})
 }
@@ -102,6 +110,7 @@ func (m *INXMock) SubmitBlock(_ context.Context, block *iotago.Block) (iotago.Bl
 	if ms, ok := block.Payload.(*iotago.Milestone); ok {
 		// milestone must be valid
 		require.EqualValues(m.t, len(m.milestones)+1, ms.Index)
+		require.Equal(m.t, block.ProtocolVersion, ms.ProtocolVersion)
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
@@ -176,13 +185,29 @@ func (m *INXMock) latestMilestoneID() iotago.MilestoneID {
 	return [32]byte{}
 }
 
-type ABCIMock struct{ *decoo.Coordinator }
+type ABCIMock struct {
+	abcitypes.Application
+
+	Txes []tmtypes.Tx
+}
 
 func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.ResultBroadcastTx, error) {
 	// trigger a new block containing that transaction
-	m.BeginBlock(abcitypes.RequestBeginBlock{Header: proto.Header{Time: time.Now()}})
+	m.BeginBlock(abcitypes.RequestBeginBlock{})
 	m.DeliverTx(abcitypes.RequestDeliverTx{Tx: tx})
 	m.EndBlock(abcitypes.RequestEndBlock{})
 	m.Commit()
+
+	m.Txes = append(m.Txes, tx)
 	return nil, nil
+}
+
+func (m *ABCIMock) Replay() {
+	resp := m.Info(abcitypes.RequestInfo{})
+	for i := resp.LastBlockHeight; i < int64(len(m.Txes)); i++ {
+		m.BeginBlock(abcitypes.RequestBeginBlock{})
+		m.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txes[i]})
+		m.EndBlock(abcitypes.RequestEndBlock{})
+		m.Commit()
+	}
 }
