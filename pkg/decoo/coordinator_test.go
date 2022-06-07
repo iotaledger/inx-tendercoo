@@ -94,7 +94,9 @@ func (m *INXMock) LatestMilestone() (*iotago.Milestone, error) {
 	return nil, nil
 }
 
-func (m *INXMock) SubmitBlock(_ context.Context, block *iotago.Block) (iotago.BlockID, error) {
+func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {
+	require.NotNil(m.t, ctx)
+
 	m.Lock()
 	defer m.Unlock()
 	id := block.MustID()
@@ -131,7 +133,10 @@ func (m *INXMock) SubmitBlock(_ context.Context, block *iotago.Block) (iotago.Bl
 	return id, nil
 }
 
-func (m *INXMock) ComputeWhiteFlag(_ context.Context, _ uint32, _ uint32, _ iotago.BlockIDs, _ iotago.MilestoneID) ([]byte, []byte, error) {
+func (m *INXMock) ComputeWhiteFlag(ctx context.Context, index uint32, _ uint32, _ iotago.BlockIDs, _ iotago.MilestoneID) ([]byte, []byte, error) {
+	require.NotNil(m.t, ctx)
+	require.LessOrEqual(m.t, index, m.LatestMilestoneIndex()+1)
+
 	return make([]byte, iotago.MilestoneMerkleProofLength), make([]byte, iotago.MilestoneMerkleProofLength), nil
 }
 

@@ -151,7 +151,8 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 		c.log.Debugw("create milestone", "state", c.currAppState.State, "parents", parents)
 
-		inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(c.ctx, c.currAppState.MilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
+		// the local context is only set when the coordinator gets started; so we have to use context.Background() here
+		inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(context.Background(), c.currAppState.MilestoneIndex, c.currAppState.Timestamp, parents, c.currAppState.LastMilestoneID)
 		if err != nil {
 			panic(err)
 		}
