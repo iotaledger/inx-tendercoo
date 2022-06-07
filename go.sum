@@ -695,6 +695,8 @@ github.com/iotaledger/inx-app v0.0.0-20220601072641-b7addc1bce01 h1:7JiYqLZuy1Cr
 github.com/iotaledger/inx-app v0.0.0-20220601072641-b7addc1bce01/go.mod h1:qb43EaUsl4kCeqi6mYY7HaOoIS8HF2VD0FLE3WiP4zs=
 github.com/iotaledger/inx/go v0.0.0-20220530154855-f371ab0a309d h1:caHiwyxAAcHZKuoOpPBE9IWo15ymYN6wGyuA4/pUkEI=
 github.com/iotaledger/inx/go v0.0.0-20220530154855-f371ab0a309d/go.mod h1:rp86sgkAH4Wbq2qRYfrOTrUeoN6ogXrXefPnV4WNfjk=
+github.com/iotaledger/inx/go v0.0.0-20220607121813-0ad275ae1129 h1:1I3Q3oDM4VxO4xGuAnQ8Uy5RJS8GLpo/u0X3IIcUoHA=
+github.com/iotaledger/inx/go v0.0.0-20220607121813-0ad275ae1129/go.mod h1:rp86sgkAH4Wbq2qRYfrOTrUeoN6ogXrXefPnV4WNfjk=
 github.com/iotaledger/iota.go v1.0.0 h1:tqm1FxJ/zOdzbrAaQ5BQpVF8dUy2eeGlSeWlNG8GoXY=
 github.com/iotaledger/iota.go v1.0.0/go.mod h1:RiKYwDyY7aCD1L0YRzHSjOsJ5mUR9yvQpvhZncNcGQI=
 github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56 h1:ibtnTlN/oeipqXyPL9sb95U5rJhV7Lh318EHoXsND2U=
@@ -1181,6 +1183,8 @@ github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.1 h1:5TQK59W5E3v0r2duFAb7P95B6hEeOyEnHRa8MjYSMTY=
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+github.com/stretchr/testify v1.7.2 h1:4jaiDzPyXQvSd7D0EjG45355tLlV3VOECpq10pLC+8s=
+github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
 github.com/subosito/gotenv v1.3.0/go.mod h1:YzJjq/33h7nrwdY+iHMhEOEEbW0ovIz0tB6t6PwAXzs=
 github.com/sylvia7788/contextcheck v1.0.4/go.mod h1:vuPKJMQ7MQ91ZTqfdyreNKwZjyUg6KO+IebVyQDedZQ=

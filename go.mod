@@ -8,10 +8,10 @@ require (
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220531132324-8347a155e220
 	github.com/iotaledger/hornet v1.1.0-rc1.0.20220530165211-a0805cb7cbe0
 	github.com/iotaledger/inx-app v0.0.0-20220601072641-b7addc1bce01
-	github.com/iotaledger/inx/go v0.0.0-20220530154855-f371ab0a309d
+	github.com/iotaledger/inx/go v0.0.0-20220607121813-0ad275ae1129
 	github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.7.2
 	github.com/tendermint/tendermint v0.35.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/dig v1.14.1
