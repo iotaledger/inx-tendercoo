@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -27,9 +28,6 @@ type HeaviestSelector struct {
 	// the maximum amount of checkpoint blocks with heaviest branch tips that are picked
 	// if the heaviest branch is not below "UnreferencedBlocksThreshold" before
 	maxHeaviestBranchTipsPerCheckpoint int
-	// the amount of checkpoint blocks with random tips that are picked if a checkpoint is issued and at least
-	// one heaviest branch tip was found, otherwise no random tips will be picked
-	randomTipsPerCheckpoint int
 	// the maximum duration to select the heaviest branch tips
 	heaviestBranchSelectionTimeout time.Duration
 	// map of all tracked blocks
@@ -53,26 +51,6 @@ func (il *trackedBlocksList) Len() int {
 	return len(il.blocks)
 }
 
-// randomTip selects a random tip item from the trackedBlocksList.
-func (il *trackedBlocksList) randomTip() (*trackedBlock, error) {
-	if len(il.blocks) == 0 {
-		return nil, ErrNoTipsAvailable
-	}
-
-	randomBlockIndex := randomInsecure(0, len(il.blocks)-1)
-
-	for _, tip := range il.blocks {
-		randomBlockIndex--
-
-		// if randomBlockIndex is below zero, we return the given tip
-		if randomBlockIndex < 0 {
-			return tip, nil
-		}
-	}
-
-	return nil, ErrNoTipsAvailable
-}
-
 // referenceTip removes the tip and set all bits of all referenced
 // blocks of the tip in all existing tips to zero.
 // this way we can track which parts of the cone would already be referenced by this tip, and
@@ -93,11 +71,10 @@ func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
 }
 
 // New creates a new HeaviestSelector instance.
-func New(minHeaviestBranchUnreferencedBlocksThreshold int, maxHeaviestBranchTipsPerCheckpoint int, randomTipsPerCheckpoint int, heaviestBranchSelectionTimeout time.Duration) *HeaviestSelector {
+func New(minHeaviestBranchUnreferencedBlocksThreshold int, maxHeaviestBranchTipsPerCheckpoint int, heaviestBranchSelectionTimeout time.Duration) *HeaviestSelector {
 	s := &HeaviestSelector{
 		minHeaviestBranchUnreferencedBlocksThreshold: minHeaviestBranchUnreferencedBlocksThreshold,
 		maxHeaviestBranchTipsPerCheckpoint:           maxHeaviestBranchTipsPerCheckpoint,
-		randomTipsPerCheckpoint:                      randomTipsPerCheckpoint,
 		heaviestBranchSelectionTimeout:               heaviestBranchSelectionTimeout,
 	}
 	s.Reset()
@@ -153,7 +130,7 @@ func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock
 	}
 
 	// select a random tip from the provided slice of tips.
-	selected := best.tips[randomInsecure(0, len(best.tips)-1)]
+	selected := best.tips[rand.Intn(len(best.tips))]
 
 	return selected, best.count, nil
 }
@@ -218,17 +195,6 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 		return nil, ErrNoTipsAvailable
 	}
 
-	// also pick random tips if at least one heaviest branch tip was found
-	for i := 0; i < s.randomTipsPerCheckpoint; i++ {
-		item, err := tipsList.randomTip()
-		if err != nil {
-			break
-		}
-
-		tipsList.referenceTip(item)
-		tips = append(tips, item.blockID)
-	}
-
 	// reset the whole HeaviestSelector if valid tips were found
 	s.Reset()
 
@@ -250,7 +216,7 @@ func (s *HeaviestSelector) OnNewSolidBlock(blockMeta *inx.BlockMetadata) (tracke
 		return
 	}
 
-	parentItems := []*trackedBlock{}
+	var parentItems []*trackedBlock
 	for _, parent := range parents {
 		parentItem := s.trackedBlocks[parent]
 		if parentItem == nil {

@@ -21,7 +21,6 @@ type ParametersCoordinator struct {
 	TipSel           struct {
 		MinHeaviestBranchUnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold of unreferenced blocks in the heaviest branch"`
 		MaxHeaviestBranchTipsPerCheckpoint           int           `default:"10" usage:"maximum amount of checkpoint blocks with heaviest branch tips that are picked if the heaviest branch is not below 'MinHeaviestBranchUnreferencedBlocksThreshold' before"`
-		RandomTipsPerCheckpoint                      int           `default:"3" usage:"amount of checkpoint blocks with random tips that are picked if a checkpoint is issued and at least one heaviest branch tip was found, otherwise no random tips will be picked"`
 		HeaviestBranchSelectionTimeout               time.Duration `default:"100ms" usage:"the maximum duration to select the heaviest branch tips"`
 	} `name:"tipsel"`
 	Tendermint Tendermint

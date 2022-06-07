@@ -13,7 +13,6 @@ import (
 const (
 	CfgCoordinatorTipselectMinHeaviestBranchUnreferencedBlocksThreshold = 20
 	CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint           = 10
-	CfgCoordinatorTipselectRandomTipsPerCheckpoint                      = 3
 	CfgCoordinatorTipselectHeaviestBranchSelectionTimeoutMilliseconds   = 100
 
 	numTestBlocks      = 32 * 100
@@ -29,7 +28,6 @@ func newHPS() *HeaviestSelector {
 	hps := New(
 		CfgCoordinatorTipselectMinHeaviestBranchUnreferencedBlocksThreshold,
 		CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint,
-		CfgCoordinatorTipselectRandomTipsPerCheckpoint,
 		CfgCoordinatorTipselectHeaviestBranchSelectionTimeoutMilliseconds,
 	)
 

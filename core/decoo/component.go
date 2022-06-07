@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -183,7 +184,6 @@ func provide(c *dig.Container) error {
 		return mselection.New(
 			ParamsCoordinator.TipSel.MinHeaviestBranchUnreferencedBlocksThreshold,
 			ParamsCoordinator.TipSel.MaxHeaviestBranchTipsPerCheckpoint,
-			ParamsCoordinator.TipSel.RandomTipsPerCheckpoint,
 			ParamsCoordinator.TipSel.HeaviestBranchSelectionTimeout,
 		)
 	}); err != nil {
@@ -342,7 +342,8 @@ func coordinatorLoop(ctx context.Context) {
 			}
 			// until the actual milestone is received, the job of the tip selector is done
 			trackBlocks.Store(false)
-			if err := deps.Coordinator.ProposeParent(info.index+1, tips[0]); err != nil {
+			// propose a random tip
+			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
 
