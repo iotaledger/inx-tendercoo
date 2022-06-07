@@ -202,6 +202,7 @@ func processMilestone(milestone *iotago.Milestone) {
 	}
 
 	latestMilestone.index = milestone.Index
+	latestMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
 	latestMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
 	newMilestoneSignal <- latestMilestone.milestoneInfo
 }
@@ -212,6 +213,7 @@ func configure() error {
 	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
 		latestMilestone.index = startIndex - 1
+		latestMilestone.timestamp = time.Now()
 		latestMilestone.milestoneBlockID = startMilestoneBlockID
 		// trigger issuing a milestone for that index
 		newMilestoneSignal <- latestMilestone.milestoneInfo
@@ -308,6 +310,7 @@ func run() error {
 
 type milestoneInfo struct {
 	index            uint32
+	timestamp        time.Time
 	milestoneBlockID iotago.BlockID
 }
 
@@ -348,8 +351,12 @@ func coordinatorLoop(ctx context.Context) {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			// TODO: reset to MS.time + interval
-			timer.Reset(ParamsCoordinator.Interval)
+			// reset the timer to match the interval since the lasts milestone
+			d := ParamsCoordinator.Interval - time.Since(info.timestamp)
+			if d < 0 {
+				d = 0
+			}
+			timer.Reset(d)
 			continue
 
 		case <-ctx.Done(): // end the loop
