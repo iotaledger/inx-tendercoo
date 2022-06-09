@@ -42,7 +42,7 @@ func (b *Byte32) UnmarshalText(text []byte) error {
 // Set sets a 32-byte array from the given string.
 // If the given string is not parsable, an error is returned.
 func (b *Byte32) Set(s string) error {
-	// pflag always trims string values, so we should do the same
+	// flag always trims string values, so we should do the same
 	trimmed := strings.TrimSpace(s)
 	if l := len(trimmed); l != hex.EncodedLen(len(Byte32{})) {
 		return fmt.Errorf("invalid length: %d", l)

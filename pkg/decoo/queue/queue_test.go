@@ -14,7 +14,7 @@ var errTest = errors.New("test")
 
 func TestSimple(t *testing.T) {
 	var r atomic.Uint32
-	q := queue.New(func(i interface{}) error {
+	q := queue.New(func(i any) error {
 		r.Store(i.(uint32))
 		return nil
 	})
@@ -28,7 +28,7 @@ func TestSimple(t *testing.T) {
 
 func TestRetry(t *testing.T) {
 	var counter atomic.Uint32
-	q := queue.New(func(i interface{}) error {
+	q := queue.New(func(i any) error {
 		if counter.Add(1) < 4 {
 			return errTest
 		}
@@ -43,7 +43,7 @@ func TestRetry(t *testing.T) {
 
 func TestReplace(t *testing.T) {
 	var r atomic.Uint32
-	q := queue.New(func(i interface{}) error {
+	q := queue.New(func(i any) error {
 		v := i.(uint32)
 		r.Store(v)
 		if v < 2 {
@@ -66,7 +66,7 @@ func TestReplace(t *testing.T) {
 
 func TestBlocking(t *testing.T) {
 	blocked := make(chan error)
-	q := queue.New(func(i interface{}) error {
+	q := queue.New(func(i any) error {
 		t.Log(i)
 		return <-blocked
 	})
@@ -90,7 +90,7 @@ func TestBlocking(t *testing.T) {
 
 func TestBlockingReplace(t *testing.T) {
 	blocked := make(chan error)
-	q := queue.New(func(i interface{}) error {
+	q := queue.New(func(i any) error {
 		t.Log(i)
 		return <-blocked
 	})

@@ -1,9 +1,9 @@
 package app
 
 import (
-	crypto_rand "crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/binary"
-	math_rand "math/rand"
+	mathrand "math/rand"
 
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/app/core/shutdown"
@@ -20,21 +20,16 @@ var (
 	Version = "0.0.1"
 )
 
-func App() *app.App {
-	return app.New(Name, Version,
-		app.WithInitComponent(InitComponent),
-		app.WithCoreComponents([]*app.CoreComponent{
-			inx.CoreComponent,
-			decoo.CoreComponent,
-			shutdown.CoreComponent,
-		}...),
-		app.WithPlugins([]*app.Plugin{
-			profiling.Plugin,
-		}...),
-	)
+func init() {
+	// seed math/rand with something cryptographically secure
+	var b [8]byte
+	if _, err := cryptorand.Read(b[:]); err != nil {
+		panic("cannot seed math/rand package with cryptographically secure random number generator")
+	}
+	mathrand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
 }
 
-var InitComponent = &app.InitComponent{
+var initComponent = &app.InitComponent{
 	Component: &app.Component{
 		Name: "App",
 	},
@@ -49,11 +44,16 @@ var InitComponent = &app.InitComponent{
 	},
 }
 
-func init() {
-	// seed math/rand with something cryptographically secure
-	var b [8]byte
-	if _, err := crypto_rand.Read(b[:]); err != nil {
-		panic("cannot seed math/rand package with cryptographically secure random number generator")
-	}
-	math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
+func App() *app.App {
+	return app.New(Name, Version,
+		app.WithInitComponent(initComponent),
+		app.WithCoreComponents([]*app.CoreComponent{
+			inx.CoreComponent,
+			decoo.CoreComponent,
+			shutdown.CoreComponent,
+		}...),
+		app.WithPlugins([]*app.Plugin{
+			profiling.Plugin,
+		}...),
+	)
 }

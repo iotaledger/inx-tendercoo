@@ -6,9 +6,8 @@
     "interval": "5s",
     "maxTrackedBlocks": 10000,
     "tipsel": {
-      "minHeaviestBranchUnreferencedMessagesThreshold": 20,
-      "maxHeaviestBranchTipsPerCheckpoint": 10,
-      "randomTipsPerCheckpoint": 3,
+      "minUnreferencedBlocksThreshold": 20,
+      "maxTips": 7,
       "heaviestBranchSelectionTimeout": "100ms"
     },
     "tendermint": {

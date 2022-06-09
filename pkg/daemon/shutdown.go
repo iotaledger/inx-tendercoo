@@ -1,8 +1,8 @@
 package daemon
 
+// shutdown order
 const (
-	PriorityDisconnectINX = iota
-	PriorityStopTangleListener
+	PriorityStopTangleListener = iota
 	PriorityStopTendermint
 	PriorityStopCoordinator
 )

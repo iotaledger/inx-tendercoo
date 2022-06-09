@@ -59,12 +59,10 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	log := CoreComponent.Logger()
 	privKey := tmed25519.PrivKey(priv)
 
-	rootDir := ParamsCoordinator.Tendermint.Root
+	rootDir := Parameters.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
 	conf := tmconfig.DefaultValidatorConfig().SetRoot(rootDir)
-
-	conf.Consensus.CreateEmptyBlocks = ParamsCoordinator.Tendermint.CreateEmptyBlocks
-	// TODO: make other Tendermint options configurable
+	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.CreateEmptyBlocks
 
 	// private validator
 	privValKeyFile := conf.PrivValidator.KeyFile()
@@ -106,7 +104,7 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	ownPubKey := privKey.PubKey()
 	var genesisValidators []tmtypes.GenesisValidator
 	var peers []string
-	for name, validator := range ParamsCoordinator.Tendermint.Validators {
+	for name, validator := range Parameters.Tendermint.Validators {
 		var pubKeyBytes types.Byte32
 		if err := pubKeyBytes.Set(validator.PubKey); err != nil {
 			return nil, nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
@@ -126,8 +124,8 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	conf.P2P.PersistentPeers = strings.Join(peers, ",")
 
 	gen := &tmtypes.GenesisDoc{
-		GenesisTime:   time.Unix(ParamsCoordinator.Tendermint.GenesisTime, 0),
-		ChainID:       ParamsCoordinator.Tendermint.ChainID,
+		GenesisTime:   time.Unix(Parameters.Tendermint.GenesisTime, 0),
+		ChainID:       Parameters.Tendermint.ChainID,
 		InitialHeight: 0,
 		Validators:    genesisValidators,
 	}

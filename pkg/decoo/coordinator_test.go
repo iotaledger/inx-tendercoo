@@ -193,7 +193,7 @@ func (m *INXMock) latestMilestoneID() iotago.MilestoneID {
 type ABCIMock struct {
 	abcitypes.Application
 
-	Txes []tmtypes.Tx
+	Txs []tmtypes.Tx
 }
 
 func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.ResultBroadcastTx, error) {
@@ -203,15 +203,15 @@ func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.Re
 	m.EndBlock(abcitypes.RequestEndBlock{})
 	m.Commit()
 
-	m.Txes = append(m.Txes, tx)
+	m.Txs = append(m.Txs, tx)
 	return nil, nil
 }
 
 func (m *ABCIMock) Replay() {
 	resp := m.Info(abcitypes.RequestInfo{})
-	for i := resp.LastBlockHeight; i < int64(len(m.Txes)); i++ {
+	for i := resp.LastBlockHeight; i < int64(len(m.Txs)); i++ {
 		m.BeginBlock(abcitypes.RequestBeginBlock{})
-		m.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txes[i]})
+		m.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txs[i]})
 		m.EndBlock(abcitypes.RequestEndBlock{})
 		m.Commit()
 	}

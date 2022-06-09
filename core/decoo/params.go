@@ -6,35 +6,38 @@ import (
 	"github.com/iotaledger/hive.go/app"
 )
 
-type Tendermint struct {
-	Root              string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
-	LogLevel          string                      `default:"info" usage:"root directory for all Tendermint data"`
-	CreateEmptyBlocks bool                        `default:"false" usage:"root directory for all Tendermint data"`
-	GenesisTime       int64                       `default:"0" usage:"genesis time of the Tendermint blockchain in Unix time"`
-	ChainID           string                      `default:"tendercoo" usage:"human-readable ID of the Tendermint blockchain"`
-	Validators        map[string]ValidatorsConfig `noflag:"true" usage:"defines the Tendermint validators"`
-}
-
-type ParametersCoordinator struct {
-	Interval         time.Duration `default:"5s" usage:"the interval milestones are issued"`
-	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of known blocks for milestone tipselection"`
+// ParametersDefinition contains the definition of configuration parameters used by the decoo app.
+type ParametersDefinition struct {
+	Interval         time.Duration `default:"5s" usage:"the interval in which milestones are issued"`
+	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of blocks tracked by the milestone tip selection"`
 	TipSel           struct {
-		MinHeaviestBranchUnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold of unreferenced blocks in the heaviest branch"`
-		MaxHeaviestBranchTipsPerCheckpoint           int           `default:"10" usage:"maximum amount of checkpoint blocks with heaviest branch tips that are picked if the heaviest branch is not below 'MinHeaviestBranchUnreferencedBlocksThreshold' before"`
-		HeaviestBranchSelectionTimeout               time.Duration `default:"100ms" usage:"the maximum duration to select the heaviest branch tips"`
+		MinUnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold for the unreferenced blocks when tip selection is cancelled"`
+		MaxTips                        int           `default:"7" usage:"maximum amount of tips returned"`
+		Timeout                        time.Duration `default:"100ms" usage:"timeout after which tip selection is cancelled"`
 	} `name:"tipsel"`
-	Tendermint Tendermint
+	Tendermint struct {
+		Root              string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
+		LogLevel          string                      `default:"info" usage:"root directory for all Tendermint data"`
+		CreateEmptyBlocks bool                        `default:"false" usage:"root directory for all Tendermint data"`
+		GenesisTime       int64                       `default:"0" usage:"genesis time of the Tendermint blockchain in Unix time"`
+		ChainID           string                      `default:"tendercoo" usage:"human-readable ID of the Tendermint blockchain"`
+		Validators        map[string]ValidatorsConfig `noflag:"true" usage:"defines the Tendermint validators"`
+	}
 }
 
-var ParamsCoordinator = &ParametersCoordinator{
-	Tendermint: Tendermint{
-		Validators: map[string]ValidatorsConfig{},
-	},
+// ValidatorsConfig defines the config options for one validator.
+// TODO: what is the best way to define PubKey as a [32]byte
+type ValidatorsConfig struct {
+	PubKey  string
+	Power   int64
+	Address string
 }
+
+// Parameters contains the configuration parameters of the decoo app.
+var Parameters = &ParametersDefinition{}
 
 var params = &app.ComponentParams{
 	Params: map[string]any{
-		"coordinator": ParamsCoordinator,
+		"coordinator": Parameters,
 	},
-	Masked: nil,
 }

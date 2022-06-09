@@ -11,7 +11,7 @@ const RetryInterval = 100 * time.Millisecond
 
 // The KeyedQueue holds at most one value per key and retries the execution of each such value until it succeeds.
 type KeyedQueue struct {
-	f func(interface{}) error
+	f func(any) error
 
 	byKey map[int]*ring.Ring
 	ring  *ring.Ring
@@ -23,12 +23,12 @@ type KeyedQueue struct {
 
 type entry struct {
 	key   int
-	value interface{}
+	value any
 	nonce uint
 }
 
 // New creates a new KeyedQueue with the execution function f.
-func New(f func(interface{}) error) *KeyedQueue {
+func New(f func(any) error) *KeyedQueue {
 	q := &KeyedQueue{
 		f:        f,
 		byKey:    map[int]*ring.Ring{},
@@ -55,7 +55,7 @@ func (q *KeyedQueue) Len() int {
 }
 
 // Submit adds a new keyed value to the queue.
-func (q *KeyedQueue) Submit(key int, value interface{}) {
+func (q *KeyedQueue) Submit(key int, value any) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	CfgCoordinatorTipselectMinHeaviestBranchUnreferencedBlocksThreshold = 20
-	CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint           = 10
-	CfgCoordinatorTipselectHeaviestBranchSelectionTimeoutMilliseconds   = 100
+	TestMinUnreferencedBlocksThreshold = 20
+	TestMaxTips                        = 10
+	TestTimeout                        = 100
 
 	numTestBlocks      = 32 * 100
 	numBenchmarkBlocks = 5000
@@ -24,14 +24,7 @@ func init() {
 }
 
 func newHPS() *HeaviestSelector {
-
-	hps := New(
-		CfgCoordinatorTipselectMinHeaviestBranchUnreferencedBlocksThreshold,
-		CfgCoordinatorTipselectMaxHeaviestBranchTipsPerCheckpoint,
-		CfgCoordinatorTipselectHeaviestBranchSelectionTimeoutMilliseconds,
-	)
-
-	return hps
+	return New(TestMaxTips, TestMinUnreferencedBlocksThreshold, TestTimeout)
 }
 
 func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
@@ -45,7 +38,6 @@ func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
 
 func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 	hps := newHPS()
-
 	// create a chain
 	lastBlockID := iotago.EmptyBlockID()
 	for i := 1; i <= numTestBlocks; i++ {
@@ -61,35 +53,33 @@ func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 	// check if the tip on top was picked
 	assert.ElementsMatch(t, lastBlockID, tips[0])
 
-	// check if trackedBlocks are resetted after tipselect
-	assert.Len(t, hps.trackedBlocks, 0)
+	// check that trackedBlocks is reset
+	assert.Empty(t, hps.trackedBlocks)
 }
 
 func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
+	const numBlocks = 8
+
 	hps := newHPS()
-
-	count := 8
-
-	blockIDs := make(iotago.BlockIDs, count)
-	for i := 0; i < count; i++ {
+	blockIDs := make(iotago.BlockIDs, numBlocks)
+	var numTrackedBlocks int
+	for i := 0; i < numBlocks; i++ {
 		metadata, blockID := newMetadata(iotago.BlockIDs{iotago.EmptyBlockID()})
-		hps.OnNewSolidBlock(metadata)
+		numTrackedBlocks = hps.OnNewSolidBlock(metadata)
 		blockIDs[i] = blockID
 	}
 
 	// check if trackedBlocks match the current count
-	assert.Len(t, hps.trackedBlocks, count)
+	assert.Equal(t, numBlocks, numTrackedBlocks)
 
 	// check if the current tips match the current count
 	list := hps.tipsToList()
-	assert.Len(t, list.blocks, count)
+	assert.Len(t, list.blocks, numBlocks)
 
 	// issue a new block that references the old ones
 	metadata, blockID := newMetadata(blockIDs)
-	hps.OnNewSolidBlock(metadata)
-
 	// old tracked blockIDs should remain, plus the new one
-	assert.Len(t, hps.trackedBlocks, count+1)
+	assert.Equal(t, numBlocks+1, hps.OnNewSolidBlock(metadata))
 
 	// all old tips should be removed, except the new one
 	list = hps.tipsToList()
@@ -103,29 +93,30 @@ func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
 	// check if the tip on top was picked
 	assert.ElementsMatch(t, blockID, tips[0])
 
-	// check if trackedBlocks are resetted after tipselect
-	assert.Len(t, hps.trackedBlocks, 0)
+	// check that trackedBlocks is reset
+	assert.Empty(t, hps.trackedBlocks)
 
 	list = hps.tipsToList()
 	assert.Len(t, list.blocks, 0)
 }
 
 func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
-	hps := newHPS()
+	const numChains = 2
 
-	numChains := 2
+	hps := newHPS()
 	lastBlockIDs := make(iotago.BlockIDs, 2)
+	var numTrackedBlocks int
 	for i := 0; i < numChains; i++ {
 		lastBlockIDs[i] = iotago.EmptyBlockID()
 		for j := 1; j <= numTestBlocks; j++ {
 			metadata, blockID := newMetadata(iotago.BlockIDs{lastBlockIDs[i]})
-			hps.OnNewSolidBlock(metadata)
+			numTrackedBlocks = hps.OnNewSolidBlock(metadata)
 			lastBlockIDs[i] = blockID
 		}
 	}
 
 	// check if all blocks are tracked
-	assert.Equal(t, numChains*numTestBlocks, hps.TrackedBlocksCount())
+	assert.Equal(t, numChains*numTestBlocks, numTrackedBlocks)
 
 	tips, err := hps.SelectTips(2)
 	assert.NoError(t, err)
@@ -134,8 +125,8 @@ func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
 	// check if the tips on top of both branches were picked
 	assert.ElementsMatch(t, lastBlockIDs, tips)
 
-	// check if trackedBlocks are resetted after tipselect
-	assert.Len(t, hps.trackedBlocks, 0)
+	// check that trackedBlocks is reset
+	assert.Empty(t, hps.trackedBlocks)
 }
 
 func BenchmarkHeaviestSelector_OnNewSolidBlock(b *testing.B) {

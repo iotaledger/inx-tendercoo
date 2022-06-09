@@ -22,14 +22,13 @@ var (
 type HeaviestSelector struct {
 	sync.Mutex
 
-	// the minimum threshold of unreferenced blocks in the heaviest branch for milestone tipselection
-	// if the value falls below that threshold, no more heaviest branch tips are picked
-	minHeaviestBranchUnreferencedBlocksThreshold int
-	// the maximum amount of checkpoint blocks with heaviest branch tips that are picked
-	// if the heaviest branch is not below "UnreferencedBlocksThreshold" before
-	maxHeaviestBranchTipsPerCheckpoint int
-	// the maximum duration to select the heaviest branch tips
-	heaviestBranchSelectionTimeout time.Duration
+	// maximum amount of tips returned by SelectTips
+	maxTips int
+	// minimum threshold for the unreferenced blocks when SelectTips is cancelled
+	minUnreferencedBlocksThreshold int
+	// timeout after which SelectTips is cancelled
+	timeout time.Duration
+
 	// map of all tracked blocks
 	trackedBlocks map[iotago.BlockID]*trackedBlock
 	// list of available tips
@@ -56,7 +55,6 @@ func (il *trackedBlocksList) Len() int {
 // this way we can track which parts of the cone would already be referenced by this tip, and
 // correctly calculate the weight of the remaining tips.
 func (il *trackedBlocksList) referenceTip(tip *trackedBlock) {
-
 	il.removeTip(tip)
 
 	// set all bits of all referenced blocks in all existing tips to zero
@@ -71,11 +69,11 @@ func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
 }
 
 // New creates a new HeaviestSelector instance.
-func New(minHeaviestBranchUnreferencedBlocksThreshold int, maxHeaviestBranchTipsPerCheckpoint int, heaviestBranchSelectionTimeout time.Duration) *HeaviestSelector {
+func New(maxTips int, minUnreferencedBlocksThreshold int, timeout time.Duration) *HeaviestSelector {
 	s := &HeaviestSelector{
-		minHeaviestBranchUnreferencedBlocksThreshold: minHeaviestBranchUnreferencedBlocksThreshold,
-		maxHeaviestBranchTipsPerCheckpoint:           maxHeaviestBranchTipsPerCheckpoint,
-		heaviestBranchSelectionTimeout:               heaviestBranchSelectionTimeout,
+		maxTips:                        maxTips,
+		minUnreferencedBlocksThreshold: minUnreferencedBlocksThreshold,
+		timeout:                        timeout,
 	}
 	s.Reset()
 	return s
@@ -93,11 +91,133 @@ func (s *HeaviestSelector) Reset() {
 	s.tips = list.New()
 }
 
-// selectTip selects a tip to be used for the next checkpoint.
-// it returns a tip, confirming the most blocks in the future cone,
-// and the amount of referenced blocks of this tip, that were not referenced by previously chosen tips.
-func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock, uint, error) {
+// OnNewSolidBlock adds a new block to the HeaviestSelector, it returns the total number of blocks tracked.
+// The block must be solid and OnNewSolidBlock must be called in the order of solidification.
+// The block must also not be below max depth.
+func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
+	s.Lock()
+	defer s.Unlock()
 
+	blockID := meta.UnwrapBlockID()
+
+	// filter duplicate blocks
+	if _, contains := s.trackedBlocks[blockID]; contains {
+		return len(s.trackedBlocks)
+	}
+
+	var trackedParents []*trackedBlock
+	for _, parent := range meta.UnwrapParents() {
+		trackedParent := s.trackedBlocks[parent]
+		if trackedParent == nil {
+			continue
+		}
+		trackedParents = append(trackedParents, trackedParent)
+	}
+
+	// compute the referenced blocks
+	// each known blocks in the HeaviestSelector is represented by a unique bit in a bitset
+	// if a new block is added, we expand the bitset by 1 bit and store the Union of the bitsets of its parents
+	idx := uint(len(s.trackedBlocks))
+	it := &trackedBlock{blockID: blockID, refs: bitset.New(idx + 1).Set(idx)}
+	for _, parentItem := range trackedParents {
+		it.refs.InPlaceUnion(parentItem.refs)
+	}
+	s.trackedBlocks[it.blockID] = it
+
+	// update tip list
+	for _, parentItem := range trackedParents {
+		s.removeTip(parentItem)
+	}
+	// store a pointer to the tip in the list
+	it.tip = s.tips.PushBack(it)
+
+	return len(s.trackedBlocks)
+}
+
+// SelectTips tries to collect tips that confirm the most recent blocks since the last call of Reset.
+// The returned tips are computed using a greedy strategy, where in each state the heaviest branch, i.e. the tip
+// referencing the most blocks, is selected and removed including its complete past cone.
+// Only tips are considered that were present at the beginning of the SelectTips call, in order to prevent attackers
+// from creating heavier branches while selection is in progress.
+// The cancellation parameters minUnreferencedBlocksThreshold and timeout are only considered when at least
+// minRequiredTips tips have been selected.
+func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
+	// create a working list with the current tips to release the lock to allow faster iteration
+	// and to get a frozen view of the tangle, so an attacker can't
+	// create heavier branches while we are searching the best tips
+	// caution: the tips are not copied, do not mutate!
+	tipsList := s.tipsToList()
+
+	// tips could be empty after a reset
+	if tipsList.Len() == 0 {
+		return nil, ErrNoTipsAvailable
+	}
+
+	var tips iotago.BlockIDs
+
+	// run the tip selection for at most 0.1s to keep the view on the tangle recent; this should be plenty
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+
+	deadlineExceeded := false
+
+	for i := 0; i < s.maxTips; i++ {
+		select {
+		case <-ctx.Done():
+			deadlineExceeded = true
+		default:
+		}
+
+		tip, count, err := s.selectTip(tipsList)
+		if err != nil {
+			break
+		}
+
+		if (len(tips) > minRequiredTips) && ((count < uint(s.minUnreferencedBlocksThreshold)) || deadlineExceeded) {
+			// minimum amount of tips reached and the heaviest tips do not confirm enough blocks or the deadline was exceeded
+			// => no need to collect more
+			break
+		}
+
+		tipsList.referenceTip(tip)
+		tips = append(tips, tip.blockID)
+	}
+
+	if len(tips) == 0 {
+		return nil, ErrNoTipsAvailable
+	}
+
+	// reset the whole HeaviestSelector if valid tips were found
+	s.Reset()
+
+	return tips, nil
+}
+
+// removeTip removes the tip item from s.
+func (s *HeaviestSelector) removeTip(it *trackedBlock) {
+	if it == nil || it.tip == nil {
+		return
+	}
+	s.tips.Remove(it.tip)
+	it.tip = nil
+}
+
+// tipsToList returns a new list containing the current tips.
+func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
+	s.Lock()
+	defer s.Unlock()
+
+	result := make(map[iotago.BlockID]*trackedBlock)
+	for e := s.tips.Front(); e != nil; e = e.Next() {
+		tip := e.Value.(*trackedBlock)
+		result[tip.blockID] = tip
+	}
+	return &trackedBlocksList{blocks: result}
+}
+
+// selectTip selects a tip to be used for the next checkpoint.
+// It returns the tip referencing the most tracked blocks and the number of these blocks.
+func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock, uint, error) {
 	if tipsList.Len() == 0 {
 		return nil, 0, ErrNoTipsAvailable
 	}
@@ -129,148 +249,8 @@ func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock
 		return nil, 0, ErrNoTipsAvailable
 	}
 
-	// select a random tip from the provided slice of tips.
+	// select a random tip from the set of best tips
 	selected := best.tips[rand.Intn(len(best.tips))]
 
 	return selected, best.count, nil
-}
-
-// SelectTips tries to collect tips that confirm the most recent blocks since the last reset of the selector.
-// best tips are determined by counting the referenced blocks (heaviest branches) and by "removing" the
-// blocks of the referenced cone of the already chosen tips in the bitsets of the available tips.
-// only tips are considered that were present at the beginning of the SelectTips call,
-// to prevent attackers from creating heavier branches while we are searching the best tips.
-// "maxHeaviestBranchTipsPerCheckpoint" is the amount of tips that are collected if
-// the current best tip is not below "UnreferencedBlocksThreshold" before.
-// a minimum amount of selected tips can be enforced, even if none of the heaviest branches matches the
-// "minHeaviestBranchUnreferencedBlocksThreshold" criteria.
-// if at least one heaviest branch tip was found, "randomTipsPerCheckpoint" random tips are added
-// to add some additional randomness to prevent parasite chain attacks.
-// the selection is canceled after a fixed deadline. in this case, it returns the current collected tips.
-func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
-
-	// create a working list with the current tips to release the lock to allow faster iteration
-	// and to get a frozen view of the tangle, so an attacker can't
-	// create heavier branches while we are searching the best tips
-	// caution: the tips are not copied, do not mutate!
-	tipsList := s.tipsToList()
-
-	// tips could be empty after a reset
-	if tipsList.Len() == 0 {
-		return nil, ErrNoTipsAvailable
-	}
-
-	var tips iotago.BlockIDs
-
-	// run the tip selection for at most 0.1s to keep the view on the tangle recent; this should be plenty
-	ctx, cancel := context.WithTimeout(context.Background(), s.heaviestBranchSelectionTimeout)
-	defer cancel()
-
-	deadlineExceeded := false
-
-	for i := 0; i < s.maxHeaviestBranchTipsPerCheckpoint; i++ {
-		// when the context has been canceled, stop collecting heaviest branch tips
-		select {
-		case <-ctx.Done():
-			deadlineExceeded = true
-		default:
-		}
-
-		tip, count, err := s.selectTip(tipsList)
-		if err != nil {
-			break
-		}
-
-		if (len(tips) > minRequiredTips) && ((count < uint(s.minHeaviestBranchUnreferencedBlocksThreshold)) || deadlineExceeded) {
-			// minimum amount of tips reached and the heaviest tips do not confirm enough blocks or the deadline was exceeded
-			// => no need to collect more
-			break
-		}
-
-		tipsList.referenceTip(tip)
-		tips = append(tips, tip.blockID)
-	}
-
-	if len(tips) == 0 {
-		return nil, ErrNoTipsAvailable
-	}
-
-	// reset the whole HeaviestSelector if valid tips were found
-	s.Reset()
-
-	return tips, nil
-}
-
-// OnNewSolidBlock adds a new block to be processed by s.
-// The block must be solid and OnNewSolidBlock must be called in the order of solidification.
-// The block must also not be below max depth.
-func (s *HeaviestSelector) OnNewSolidBlock(blockMeta *inx.BlockMetadata) (trackedBlocksCount int) {
-	s.Lock()
-	defer s.Unlock()
-
-	blockID := blockMeta.UnwrapBlockID()
-	parents := blockMeta.UnwrapParents()
-
-	// filter duplicate blocks
-	if _, contains := s.trackedBlocks[blockID]; contains {
-		return
-	}
-
-	var parentItems []*trackedBlock
-	for _, parent := range parents {
-		parentItem := s.trackedBlocks[parent]
-		if parentItem == nil {
-			continue
-		}
-
-		parentItems = append(parentItems, parentItem)
-	}
-
-	// compute the referenced blocks
-	// all the known children in the HeaviestSelector are represented by a unique bit in a bitset.
-	// if a new child is added, we expand the bitset by 1 bit and store the Union of the bitsets
-	// of the parents for this child, to know which parts of the cone are referenced by this child.
-	idx := uint(len(s.trackedBlocks))
-	it := &trackedBlock{blockID: blockID, refs: bitset.New(idx + 1).Set(idx)}
-
-	for _, parentItem := range parentItems {
-		it.refs.InPlaceUnion(parentItem.refs)
-	}
-	s.trackedBlocks[it.blockID] = it
-
-	// update tips
-	for _, parentItem := range parentItems {
-		s.removeTip(parentItem)
-	}
-
-	it.tip = s.tips.PushBack(it)
-
-	return s.TrackedBlocksCount()
-}
-
-// removeTip removes the tip item from s.
-func (s *HeaviestSelector) removeTip(it *trackedBlock) {
-	if it == nil || it.tip == nil {
-		return
-	}
-	s.tips.Remove(it.tip)
-	it.tip = nil
-}
-
-// tipsToList returns a new list containing the current tips.
-func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
-	s.Lock()
-	defer s.Unlock()
-
-	result := make(map[iotago.BlockID]*trackedBlock)
-	for e := s.tips.Front(); e != nil; e = e.Next() {
-		tip := e.Value.(*trackedBlock)
-		result[tip.blockID] = tip
-	}
-	return &trackedBlocksList{blocks: result}
-}
-
-// TrackedBlocksCount returns the amount of known blocks.
-func (s *HeaviestSelector) TrackedBlocksCount() (trackedBlocksCount int) {
-	return len(s.trackedBlocks)
 }

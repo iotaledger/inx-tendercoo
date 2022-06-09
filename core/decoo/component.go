@@ -32,6 +32,9 @@ import (
 )
 
 const (
+	// AppName is the name of the decoo plugin.
+	AppName = "Coordinator"
+
 	// CfgCoordinatorBootstrap defines whether the network is bootstrapped.
 	CfgCoordinatorBootstrap = "cooBootstrap"
 	// CfgCoordinatorStartIndex defines the index of the first milestone at bootstrap.
@@ -47,14 +50,6 @@ const (
 	decooWorkerName          = "Coordinator"
 )
 
-// ValidatorsConfig defines the config options for one validator.
-// TODO: what is the best way to define PubKey as a [32]byte
-type ValidatorsConfig struct {
-	PubKey  string `json:"pubKey" koanf:"pubKey"`
-	Power   int64  `json:"power" koanf:"power"`
-	Address string `json:"address" koanf:"address"`
-}
-
 func init() {
 	flag.BoolVar(&bootstrap, CfgCoordinatorBootstrap, false, "whether the network is bootstrapped")
 	flag.Uint32Var(&startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
@@ -63,7 +58,7 @@ func init() {
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
-			Name:      "DeCoo",
+			Name:      AppName,
 			DepsFunc:  func(cDeps dependencies) { deps = cDeps },
 			Params:    params,
 			Provide:   provide,
@@ -131,7 +126,7 @@ func provide(c *dig.Container) error {
 
 		// extract all validator public keys
 		var members []ed25519.PublicKey
-		for name, validator := range ParamsCoordinator.Tendermint.Validators {
+		for name, validator := range Parameters.Tendermint.Validators {
 			var pubKey types.Byte32
 			if err := pubKey.Set(validator.PubKey); err != nil {
 				return nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
@@ -169,7 +164,7 @@ func provide(c *dig.Container) error {
 		}
 		// use a separate logger for Tendermint
 		log := logger.NewLogger("Tendermint")
-		lvl, err := zapcore.ParseLevel(ParamsCoordinator.Tendermint.LogLevel)
+		lvl, err := zapcore.ParseLevel(Parameters.Tendermint.LogLevel)
 		if err != nil {
 			return nil, fmt.Errorf("invalid level: %w", err)
 		}
@@ -181,11 +176,7 @@ func provide(c *dig.Container) error {
 
 	// provide the heaviest branch selection strategy
 	if err := c.Provide(func() *mselection.HeaviestSelector {
-		return mselection.New(
-			ParamsCoordinator.TipSel.MinHeaviestBranchUnreferencedBlocksThreshold,
-			ParamsCoordinator.TipSel.MaxHeaviestBranchTipsPerCheckpoint,
-			ParamsCoordinator.TipSel.HeaviestBranchSelectionTimeout,
-		)
+		return mselection.New(Parameters.TipSel.MaxTips, Parameters.TipSel.MinUnreferencedBlocksThreshold, Parameters.TipSel.Timeout)
 	}); err != nil {
 		return err
 	}
@@ -226,7 +217,7 @@ func configure() error {
 		}
 		// add tips to the heaviest branch selector
 		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
-		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= ParamsCoordinator.MaxTrackedBlocks {
+		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
 			if latestMilestone.TryLock() {
 				defer latestMilestone.Unlock()
@@ -353,7 +344,7 @@ func coordinatorLoop(ctx context.Context) {
 				<-timer.C
 			}
 			// reset the timer to match the interval since the lasts milestone
-			d := ParamsCoordinator.Interval - time.Since(info.timestamp)
+			d := Parameters.Interval - time.Since(info.timestamp)
 			if d < 0 {
 				d = 0
 			}
@@ -367,7 +358,7 @@ func coordinatorLoop(ctx context.Context) {
 		// when this select is reach, the timer has fired and a milestone was proposed
 		select {
 		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
-			timer.Reset(ParamsCoordinator.Interval) // the timer has already fired, so we can safely reset it
+			timer.Reset(Parameters.Interval) // the timer has already fired, so we can safely reset it
 
 		case <-ctx.Done(): // end the loop
 			return
