@@ -25,7 +25,7 @@ type HeaviestSelector struct {
 	// maximum amount of tips returned by SelectTips
 	maxTips int
 	// minimum threshold for the unreferenced blocks when SelectTips is cancelled
-	minUnreferencedBlocksThreshold int
+	unreferencedBlocksThreshold int
 	// timeout after which SelectTips is cancelled
 	timeout time.Duration
 
@@ -71,9 +71,9 @@ func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
 // New creates a new HeaviestSelector instance.
 func New(maxTips int, minUnreferencedBlocksThreshold int, timeout time.Duration) *HeaviestSelector {
 	s := &HeaviestSelector{
-		maxTips:                        maxTips,
-		minUnreferencedBlocksThreshold: minUnreferencedBlocksThreshold,
-		timeout:                        timeout,
+		maxTips:                     maxTips,
+		unreferencedBlocksThreshold: minUnreferencedBlocksThreshold,
+		timeout:                     timeout,
 	}
 	s.Reset()
 	return s
@@ -139,7 +139,7 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 // referencing the most blocks, is selected and removed including its complete past cone.
 // Only tips are considered that were present at the beginning of the SelectTips call, in order to prevent attackers
 // from creating heavier branches while selection is in progress.
-// The cancellation parameters minUnreferencedBlocksThreshold and timeout are only considered when at least
+// The cancellation parameters unreferencedBlocksThreshold and timeout are only considered when at least
 // minRequiredTips tips have been selected.
 func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
 	// create a working list with the current tips to release the lock to allow faster iteration
@@ -173,7 +173,7 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 			break
 		}
 
-		if (len(tips) > minRequiredTips) && ((count < uint(s.minUnreferencedBlocksThreshold)) || deadlineExceeded) {
+		if (len(tips) > minRequiredTips) && ((count < uint(s.unreferencedBlocksThreshold)) || deadlineExceeded) {
 			// minimum amount of tips reached and the heaviest tips do not confirm enough blocks or the deadline was exceeded
 			// => no need to collect more
 			break

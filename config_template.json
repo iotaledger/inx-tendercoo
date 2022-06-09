@@ -6,9 +6,9 @@
     "interval": "5s",
     "maxTrackedBlocks": 10000,
     "tipsel": {
-      "minUnreferencedBlocksThreshold": 20,
       "maxTips": 7,
-      "heaviestBranchSelectionTimeout": "100ms"
+      "unreferencedBlocksThreshold": 20,
+      "timeout": "100ms"
     },
     "tendermint": {
       "root": "tendermint",

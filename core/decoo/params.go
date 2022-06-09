@@ -11,9 +11,9 @@ type ParametersDefinition struct {
 	Interval         time.Duration `default:"5s" usage:"the interval in which milestones are issued"`
 	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of blocks tracked by the milestone tip selection"`
 	TipSel           struct {
-		MinUnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold for the unreferenced blocks when tip selection is cancelled"`
-		MaxTips                        int           `default:"7" usage:"maximum amount of tips returned"`
-		Timeout                        time.Duration `default:"100ms" usage:"timeout after which tip selection is cancelled"`
+		MaxTips                     int           `default:"7" usage:"maximum amount of tips returned"`
+		UnreferencedBlocksThreshold int           `default:"20" usage:"minimum threshold for the unreferenced blocks when tip selection is cancelled"`
+		Timeout                     time.Duration `default:"100ms" usage:"timeout after which tip selection is cancelled"`
 	} `name:"tipsel"`
 	Tendermint struct {
 		Root              string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
