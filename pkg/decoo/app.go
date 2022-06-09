@@ -244,8 +244,9 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 				c.log.Errorf("failed to get latest milestone: %s", err)
 			}
 			if latest == nil || c.currAppState.MilestoneIndex > latest.Index {
+				ms := *c.currAppState.Milestone
 				go func() {
-					if err := c.createAndSendMilestone(c.ctx, *c.currAppState.Milestone); err != nil {
+					if err := c.createAndSendMilestone(c.ctx, ms); err != nil {
 						panic(err)
 					}
 				}()
