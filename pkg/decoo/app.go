@@ -3,6 +3,7 @@ package decoo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -214,9 +215,11 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 			c.log.Debugw("awaiting parent", "blockID", blockID)
 
 			issuer, index := issuer, c.currAppState.MilestoneIndex
-			c.registry.RegisterCallback(blockID, func(blockID iotago.BlockID) {
-				c.processParent(issuer, index, blockID)
-			})
+			err := c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(issuer, index, id) })
+			// ignore errors when the coordinator is shutting down
+			if err != nil && !errors.Is(err, context.Canceled) {
+				panic(err)
+			}
 
 			processed[blockID] = struct{}{}
 		}
