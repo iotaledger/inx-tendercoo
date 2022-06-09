@@ -8,14 +8,25 @@ import (
 )
 
 // State is the coordinator state that needs to be persisted.
+// The State is persisted inside the Metadata field of each milestone.
+// It is serialized in the following way:
+//
+// | Name                 | Type          | Description                                                |
+// | -------------------- | ------------- | ---------------------------------------------------------- |
+// | MilestoneHeight      | int64         | Block height of the milestone's first block in Tendermint. |
+// | LastMilestoneBlockID | ByteArray[32] | Block ID of the previous Milestone.                        |
+//
+// It is not necessary to persis MilestoneIndex and LastMilestoneID as these fields are already present
+// in the iotago.Milestone.
+// It is therefore possible to reconstruct the State from a given milestone.
 type State struct {
-	// MilestoneHeight denotes the Tendermint height of the first block for this milestone.
+	// MilestoneHeight denotes the Block height of the milestone's first block in Tendermint..
 	MilestoneHeight int64
 	// MilestoneIndex denotes the index of this milestone.
 	MilestoneIndex uint32
 	// LastMilestoneID denotes the ID of the previous milestone.
 	LastMilestoneID iotago.MilestoneID
-	// LastMilestoneBlockID denotes the ID of a block containing the previous milestone.
+	// LastMilestoneBlockID denotes the block ID of the previous Milestone.
 	LastMilestoneBlockID iotago.BlockID
 }
 
