@@ -222,8 +222,8 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		}
 	}
 
-	// the milestone is done, if we have enough partial signatures
-	if len(c.currAppState.SignaturesByIssuer) >= c.committee.T() {
+	// the milestone is done, if the super majority has proposed a valid signature
+	if len(c.currAppState.SignaturesByIssuer) > c.committee.N()*2/3 {
 		// sort partial signatures to generate deterministic milestone payload
 		signatures := make(iotago.Signatures, 0, len(c.currAppState.SignaturesByIssuer))
 		for _, signature := range c.currAppState.SignaturesByIssuer {
