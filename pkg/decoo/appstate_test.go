@@ -83,7 +83,6 @@ func randState() *decoo.AppState {
 			LastMilestoneID:      tpkg.Rand32ByteArray(),
 			LastMilestoneBlockID: tpkg.Rand32ByteArray(),
 		},
-		Timestamp: rand.Uint32(),
 		ParentByIssuer: map[types.Byte32]iotago.BlockID{
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
