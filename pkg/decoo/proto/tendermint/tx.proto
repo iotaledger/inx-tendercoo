@@ -26,15 +26,13 @@ message Proof {
   // index of the corresponding milestone to prevent replays
   uint32 index = 1;
   // block ID of a parent
-  bytes parent_id = 2;
+  bytes parent_block_id = 2;
 }
 
 // PartialSignature of a given milestone.
 message PartialSignature {
-  // index of the corresponding pre-milestone to prevent replays
-  uint32 index = 1;
   // plain Ed25519 signature of the implicit milestone essence
-  bytes milestone_signature = 2;
+  bytes signature = 1;
 }
 
 // Essence of a TxRaw.

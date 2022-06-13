@@ -1,11 +1,9 @@
 package decoo
 
 import (
-	"crypto/ed25519"
 	"encoding/json"
 	"sync"
 
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"golang.org/x/crypto/blake2b"
@@ -15,16 +13,13 @@ import (
 // The AppState must have a well-defined hash. For this, the AppState is marshalled into json and the resulting bytes
 // are then hashed using BLAKE2b. The standard json implementation assures, that the marshaling is always deterministic.
 type AppState struct {
-	sync.RWMutex
+	sync.Mutex
 
 	// Height denotes the height of the Tendermint blockchain.
 	Height int64
 
 	// State contains the coordinator state.
 	State
-
-	// Timestamp denotes the time of the last block header.
-	Timestamp uint32
 
 	// ParentByIssuer contains the proposed parent IDs sorted by the proposers PublicKey.
 	ParentByIssuer map[types.Byte32]iotago.BlockID
@@ -50,7 +45,6 @@ func (a *AppState) UnmarshalBinary(data []byte) error { return json.Unmarshal(da
 func (a *AppState) Reset(height int64, state *State) {
 	a.Height = height
 	a.State = *state
-	a.Timestamp = 0
 	a.ParentByIssuer = map[types.Byte32]iotago.BlockID{}
 	a.IssuerCountByParent = map[types.Byte32]int{}
 	a.ProofsByBlockID = map[types.Byte32]map[types.Byte32]struct{}{}
@@ -78,137 +72,4 @@ func (a *AppState) Hash() []byte {
 	}
 	hash := blake2b.Sum256(buf)
 	return hash[:]
-}
-
-// CheckParent performs syntactic validation on a Proof.
-func (a *AppState) CheckParent(p *tendermint.Parent) uint32 {
-	if p == nil {
-		return CodeTypeSyntaxError
-	}
-	// index must not be in the past
-	if p.Index < a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// the block ID must have the correct length
-	if len(p.BlockId) != len(iotago.BlockID{}) {
-		return CodeTypeSyntaxError
-	}
-	return CodeTypeOK
-}
-
-// DeliverParent performs semantic validation on a Proof and updates the state accordingly.
-func (a *AppState) DeliverParent(issuer ed25519.PublicKey, p *tendermint.Parent, _ *Committee) uint32 {
-	// proof must match the current milestone index
-	if p.Index != a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// proofs are only relevant before we created a milestone
-	if a.Milestone != nil {
-		return CodeTypeStateError
-	}
-	// there must be at most one parent per issuer
-	issuerKey := types.Byte32FromSlice(issuer)
-	if _, has := a.ParentByIssuer[issuerKey]; has {
-		return CodeTypeReplayError
-	}
-
-	// add the parent to the state
-	blockID := types.Byte32FromSlice(p.GetBlockId())
-	a.ParentByIssuer[issuerKey] = iotago.BlockID(blockID)
-	a.IssuerCountByParent[blockID]++
-	return CodeTypeOK
-}
-
-// CheckProof performs syntactic validation on a Proof.
-func (a *AppState) CheckProof(p *tendermint.Proof) uint32 {
-	if p == nil {
-		return CodeTypeSyntaxError
-	}
-	// index must not be in the past
-	if p.Index < a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// the block ID must have the correct length
-	if len(p.ParentId) != len(iotago.BlockID{}) {
-		return CodeTypeSyntaxError
-	}
-	return CodeTypeOK
-}
-
-// DeliverProof performs semantic validation on a Proof and updates the state accordingly.
-func (a *AppState) DeliverProof(issuer ed25519.PublicKey, p *tendermint.Proof, _ *Committee) uint32 {
-	// proof must match the current milestone index
-	if p.Index != a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// proofs are only relevant before we created a milestone
-	if a.Milestone != nil {
-		return CodeTypeStateError
-	}
-	// the referenced block must be a parent
-	blockID := types.Byte32FromSlice(p.ParentId)
-	if a.IssuerCountByParent[blockID] < 1 {
-		return CodeTypeStateError
-	}
-	// check that the same proof was not issued already
-	proofs := a.ProofsByBlockID[blockID]
-	if proofs == nil {
-		proofs = map[types.Byte32]struct{}{}
-		a.ProofsByBlockID[blockID] = proofs
-	}
-	if _, has := proofs[types.Byte32FromSlice(issuer)]; has {
-		return CodeTypeReplayError
-	}
-
-	// add the proof to the state
-	proofs[types.Byte32FromSlice(issuer)] = struct{}{}
-	return CodeTypeOK
-}
-
-// CheckPartial performs syntactic validation on a PartialSignature.
-func (a *AppState) CheckPartial(p *tendermint.PartialSignature) uint32 {
-	if p == nil {
-		return CodeTypeSyntaxError
-	}
-	// index must not be in the past
-	if p.Index < a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// the MilestoneSignature must have the correct length
-	if len(p.MilestoneSignature) != ed25519.SignatureSize {
-		return CodeTypeSyntaxError
-	}
-	return CodeTypeOK
-}
-
-// DeliverPartial performs semantic validation on a PartialSignature and updates the state accordingly.
-func (a *AppState) DeliverPartial(issuer ed25519.PublicKey, p *tendermint.PartialSignature, committee *Committee) uint32 {
-	// signature must match the current milestone index
-	if p.Index != a.MilestoneIndex {
-		return CodeTypeStateError
-	}
-	// there must be a milestone essence to sign
-	if a.Milestone == nil {
-		return CodeTypeStateError
-	}
-	// there must be at most one signature per issuer
-	if _, has := a.SignaturesByIssuer[types.Byte32FromSlice(issuer)]; has {
-		return CodeTypeReplayError
-	}
-	// the signature must be valid
-	essence, err := a.Milestone.Essence()
-	if err != nil {
-		panic(err)
-	}
-	if err := committee.VerifySingle(essence, issuer, p.MilestoneSignature); err != nil {
-		return CodeTypeSyntaxError
-	}
-
-	sig := &iotago.Ed25519Signature{}
-	copy(sig.PublicKey[:], issuer)
-	copy(sig.Signature[:], p.MilestoneSignature)
-
-	// add the partial signature to the state
-	a.SignaturesByIssuer[types.Byte32FromSlice(issuer)] = sig
-	return CodeTypeOK
 }

@@ -2,12 +2,11 @@ package decoo
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -15,7 +14,6 @@ import (
 	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/atomic"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -28,8 +26,6 @@ var (
 	ErrTooManyValidators = errors.New("too many validators")
 	// ErrNotStarted is returned when the coordinator has not been started.
 	ErrNotStarted = errors.New("coordinator not started")
-	// ErrIndexBehindAppState is returned when the proposed index is older than the app state.
-	ErrIndexBehindAppState = errors.New("milestone index behind app state")
 )
 
 // keys for the broadcastQueue
@@ -44,6 +40,7 @@ const (
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
+	ValidTip(iotago.BlockID) (bool, error)
 
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
@@ -66,8 +63,10 @@ type Coordinator struct {
 	broadcastQueue *queue.KeyedQueue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
-	currAppState AppState
-	lastAppState AppState
+	checkState   AppState
+	deliverState AppState
+
+	blockTime time.Time
 
 	ctx        context.Context
 	abciClient ABCIClient
@@ -76,8 +75,8 @@ type Coordinator struct {
 
 // New creates a new Coordinator.
 func New(committee *Committee, inxClient INXClient, registerer registry.EventRegisterer, log *logger.Logger) (*Coordinator, error) {
-	// there must be at least one honest parent in each milestone
-	if committee.T() > iotago.BlockMaxParents-1 {
+	// there must be space for at least one honest parent in each milestone
+	if committee.N()/3+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
 	// there must be space for one signature per committee member
@@ -158,88 +157,40 @@ func (c *Coordinator) Stop() error {
 	return nil
 }
 
-// StateMilestoneIndex returns the milestone index of the ABCI application state.
-func (c *Coordinator) StateMilestoneIndex() uint32 {
-	c.lastAppState.RLock()
-	defer c.lastAppState.RUnlock()
-	return c.lastAppState.MilestoneIndex
-}
-
 // ProposeParent proposes a parent for the milestone with the given index.
 func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error {
-	// ignore this request, if the index is in the past
-	if index < c.StateMilestoneIndex() {
-		return ErrIndexBehindAppState
-	}
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
 
-	parent := &tendermint.Parent{Index: index, BlockId: blockID[:]}
-	tx, err := c.marshalTx(parent)
+	parent := &Parent{Index: index, BlockID: blockID}
+	tx, err := MarshalTx(c.committee, parent)
 	if err != nil {
 		panic(err)
 	}
 
-	c.log.Debugw("broadcast parent", "Index", index, "BlockId", blockID)
-	c.broadcastQueue.Submit(ParentKey, tx)
-	return nil
+	c.log.Debugw("broadcast tx", "parent", parent)
+	_, err = c.abciClient.BroadcastTxSync(c.ctx, tx)
+	return err
 }
 
 func (c *Coordinator) initState(height int64, state *State) {
-	c.currAppState.Lock()
-	defer c.currAppState.Unlock()
-	c.lastAppState.Lock()
-	defer c.lastAppState.Unlock()
+	c.checkState.Lock()
+	defer c.checkState.Unlock()
+	c.deliverState.Lock()
+	defer c.deliverState.Unlock()
 
-	c.currAppState.Reset(height, state)
-	c.lastAppState.Reset(height, state)
-}
-
-// unmarshalTx parses the wire-format message in b and returns the verified issuer as well as the message m.
-func (c *Coordinator) unmarshalTx(b []byte) (ed25519.PublicKey, proto.Message, error) {
-	txRaw := &tendermint.TxRaw{}
-	if err := proto.Unmarshal(b, txRaw); err != nil {
-		return nil, nil, err
-	}
-	if err := c.committee.VerifySingle(txRaw.GetEssence(), txRaw.GetPublicKey(), txRaw.GetSignature()); err != nil {
-		return nil, nil, err
-	}
-
-	txEssence := &tendermint.Essence{}
-	if err := proto.Unmarshal(txRaw.GetEssence(), txEssence); err != nil {
-		return nil, nil, err
-	}
-	msg, err := txEssence.Unwrap()
-	if err != nil {
-		return nil, nil, err
-	}
-	return txRaw.GetPublicKey(), msg, nil
-}
-
-// marshalTx returns the wire-format encoding of m which can then be passed to Tendermint.
-func (c *Coordinator) marshalTx(m proto.Message) ([]byte, error) {
-	txEssence := &tendermint.Essence{}
-	if err := txEssence.Wrap(m); err != nil {
-		return nil, err
-	}
-
-	essence, err := proto.Marshal(txEssence)
-	if err != nil {
-		return nil, err
-	}
-	txRaw := &tendermint.TxRaw{
-		Essence:   essence,
-		PublicKey: c.committee.PublicKey(),
-		Signature: c.committee.Sign(essence).Signature[:],
-	}
-	return proto.Marshal(txRaw)
+	c.checkState.Reset(height, state)
+	c.deliverState.Reset(height, state)
 }
 
 func (c *Coordinator) broadcastTx(tx []byte) error {
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
-	_, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	res, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	if err == nil && res.Code != CodeTypeOK {
+		c.log.Warnf("broadcast did not pass CheckTx: %s", res.Log)
+	}
 	return err
 }

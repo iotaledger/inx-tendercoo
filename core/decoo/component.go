@@ -26,7 +26,6 @@ import (
 	tmservice "github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
-	"go.uber.org/atomic"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
 )
@@ -83,7 +82,6 @@ var (
 		milestoneInfo
 	}
 	newMilestoneSignal chan milestoneInfo
-	trackBlocks        atomic.Bool
 
 	// closures
 	onBlockSolid                *events.Closure
@@ -133,6 +131,7 @@ func provide(c *dig.Container) error {
 			}
 			members = append(members, pubKey[:])
 		}
+
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 		coo, err := decoo.New(committee, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
@@ -199,7 +198,6 @@ func processMilestone(milestone *iotago.Milestone) {
 }
 
 func configure() error {
-	trackBlocks.Store(true)
 	newMilestoneSignal = make(chan milestoneInfo, 1)
 	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
@@ -212,7 +210,7 @@ func configure() error {
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
-		if !trackBlocks.Load() || metadata.GetShouldReattach() {
+		if metadata.GetShouldReattach() {
 			return
 		}
 		// add tips to the heaviest branch selector
@@ -233,10 +231,6 @@ func configure() error {
 
 	// after a new milestone is confirmed, restart the selector and process the new milestone
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
-		// the selector needs to be reset after the milestone was confirmed
-		deps.Selector.Reset()
-		// make sure that new solid blocks are tracked
-		trackBlocks.Store(true)
 		// process the milestone for the coordinator
 		processMilestone(milestone.Milestone)
 	})
@@ -327,28 +321,24 @@ func coordinatorLoop(ctx context.Context) {
 		case <-timer.C: // propose a parent for the milestone with index
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
-				CoreComponent.LogWarnf("failed to select tips: %s", err)
+				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
 				// use the previous milestone block as fallback
 				tips = iotago.BlockIDs{info.milestoneBlockID}
 			}
-			// until the actual milestone is received, the job of the tip selector is done
-			trackBlocks.Store(false)
 			// propose a random tip
 			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
 
 		case info = <-newMilestoneSignal: // we have received a new milestone without proposing a parent
+			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
+			deps.Selector.Reset()
 			// the timer has not yet fired, so we need to stop it before resetting
 			if !timer.Stop() {
 				<-timer.C
 			}
 			// reset the timer to match the interval since the lasts milestone
-			d := Parameters.Interval - time.Since(info.timestamp)
-			if d < 0 {
-				d = 0
-			}
-			timer.Reset(d)
+			timer.Reset(remainingInterval(info.timestamp))
 			continue
 
 		case <-ctx.Done(): // end the loop
@@ -358,7 +348,8 @@ func coordinatorLoop(ctx context.Context) {
 		// when this select is reach, the timer has fired and a milestone was proposed
 		select {
 		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
-			timer.Reset(Parameters.Interval) // the timer has already fired, so we can safely reset it
+			// reset the timer to match the interval since the lasts milestone
+			timer.Reset(remainingInterval(info.timestamp))
 
 		case <-ctx.Done(): // end the loop
 			return
@@ -392,4 +383,12 @@ func loadEd25519PrivateKeyFromEnvironment(name string) (ed25519.PrivateKey, erro
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
 	return !os.IsNotExist(err)
+}
+
+func remainingInterval(ts time.Time) time.Duration {
+	d := Parameters.Interval - time.Since(ts)
+	if d < 0 {
+		d = 0
+	}
+	return d
 }
