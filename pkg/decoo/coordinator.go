@@ -40,6 +40,7 @@ const (
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
+	ValidTip(iotago.BlockID) (bool, error)
 
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
@@ -74,8 +75,8 @@ type Coordinator struct {
 
 // New creates a new Coordinator.
 func New(committee *Committee, inxClient INXClient, registerer registry.EventRegisterer, log *logger.Logger) (*Coordinator, error) {
-	// there must be at least one honest parent in each milestone
-	if committee.T() > iotago.BlockMaxParents-1 {
+	// there must be space for at least one honest parent in each milestone
+	if committee.N()/3+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
 	// there must be space for one signature per committee member
@@ -169,8 +170,8 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	}
 
 	c.log.Debugw("broadcast tx", "parent", parent)
-	c.broadcastQueue.Submit(ParentKey, tx)
-	return nil
+	_, err = c.abciClient.BroadcastTxSync(c.ctx, tx)
+	return err
 }
 
 func (c *Coordinator) initState(height int64, state *State) {
@@ -187,6 +188,9 @@ func (c *Coordinator) broadcastTx(tx []byte) error {
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
-	_, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	res, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	if err == nil && res.Code != CodeTypeOK {
+		c.log.Warnf("broadcast did not pass CheckTx: %s", res.Log)
+	}
 	return err
 }

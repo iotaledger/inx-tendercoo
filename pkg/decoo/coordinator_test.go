@@ -94,6 +94,13 @@ func (m *INXMock) LatestMilestone() (*iotago.Milestone, error) {
 	return nil, nil
 }
 
+func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
+	m.Lock()
+	defer m.Unlock()
+	_, solid := m.solidBlocks[id]
+	return solid, nil
+}
+
 func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {
 	require.NotNil(m.t, ctx)
 
@@ -116,7 +123,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
-		require.NoError(m.t, ms.VerifySignatures(committee.T(), committee.Members()))
+		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members()))
 
 		// state must be valid
 		state, err := decoo.NewStateFromMilestone(ms)
@@ -204,7 +211,7 @@ func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.Re
 	m.Commit()
 
 	m.Txs = append(m.Txs, tx)
-	return nil, nil
+	return &tmcore.ResultBroadcastTx{}, nil
 }
 
 func (m *ABCIMock) Replay() {

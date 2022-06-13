@@ -51,8 +51,8 @@ func NewCommittee(sk ed25519.PrivateKey, members ...ed25519.PublicKey) *Committe
 func (v *Committee) N() int { return len(v.indexByID) }
 
 // T returns the threshold t required for valid signatures.
-// Currently, this corresponds to f+1, i.e. at least one honest member.
-func (v *Committee) T() int { return v.N()/3 + 1 }
+// Currently, this corresponds to n-f, i.e. at least all honest members.
+func (v *Committee) T() int { return v.N()*2/3 + 1 }
 
 // PublicKey returns the public key of the local member.
 func (v *Committee) PublicKey() ed25519.PublicKey {

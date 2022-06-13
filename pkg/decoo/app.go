@@ -21,7 +21,6 @@ const (
 	CodeTypeOK uint32 = iota
 	CodeTypeSyntaxError
 	CodeTypeStateError
-	CodeTypeReplayError
 	CodeTypeNotSupportedError
 )
 
@@ -54,12 +53,15 @@ func (c *Coordinator) Query(req abcitypes.RequestQuery) abcitypes.ResponseQuery 
 func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
 	issuer, tx, err := UnmarshalTx(c.committee, req.Tx)
 	if err != nil {
-		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError, Log: err.Error()}
 	}
 
 	c.checkState.Lock()
 	defer c.checkState.Unlock()
-	return abcitypes.ResponseCheckTx{Code: tx.Apply(issuer, &c.checkState)}
+	if err := tx.Apply(issuer, &c.checkState); err != nil {
+		return abcitypes.ResponseCheckTx{Code: CodeTypeStateError, Log: err.Error()}
+	}
+	return abcitypes.ResponseCheckTx{Code: CodeTypeOK}
 }
 
 // BeginBlock is the first method called for each new block.
@@ -78,12 +80,17 @@ func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.Resp
 func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 	issuer, tx, err := UnmarshalTx(c.committee, req.Tx)
 	if err != nil {
-		return abcitypes.ResponseDeliverTx{Code: CodeTypeSyntaxError}
+		return abcitypes.ResponseDeliverTx{Code: CodeTypeSyntaxError, Log: err.Error()}
 	}
+
+	c.log.Debugw("DeliverTx", "tx", tx, "issuer", issuer)
 
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
-	return abcitypes.ResponseDeliverTx{Code: tx.Apply(issuer, &c.deliverState)}
+	if err := tx.Apply(issuer, &c.deliverState); err != nil {
+		return abcitypes.ResponseDeliverTx{Code: CodeTypeStateError, Log: err.Error()}
+	}
+	return abcitypes.ResponseDeliverTx{Code: CodeTypeOK}
 }
 
 // EndBlock signals the end of a block.
@@ -93,21 +100,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
-	// register callbacks for all received parents
-	if c.deliverState.Milestone == nil {
-		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
-		for issuer, blockID := range c.deliverState.ParentByIssuer {
-			if _, has := processed[blockID]; has {
-				continue
-			}
-			c.log.Debugw("awaiting parent", "blockID", blockID)
-
-			issuer, index := issuer, c.deliverState.MilestoneIndex
-			_ = c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(issuer, index, id) })
-			processed[blockID] = struct{}{}
-		}
-	}
-
+	// try to create the milestone essence
 	if c.deliverState.Milestone == nil {
 		// collect parents that have sufficient proofs
 		parentWeight := 0
@@ -123,7 +116,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			}
 		}
 
-		// create the final milestone essence, if enough parents have been confirmed
+		// if enough parents have been confirmed, create the milestone essence
 		if parentWeight > c.committee.N()/3 {
 			if len(parents) > iotago.BlockMaxParents-1 {
 				parents = parents[:iotago.BlockMaxParents-1]
@@ -144,11 +137,46 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			// create milestone essence
 			c.deliverState.Milestone = iotago.NewMilestone(c.deliverState.MilestoneIndex, timestamp, c.protoParas.Version, c.deliverState.LastMilestoneID, parents, types.Byte32FromSlice(inclMerkleRoot), types.Byte32FromSlice(appliedMerkleRoot))
 			c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
-
-			// proofs are no longer needed for this milestone
-			c.deliverState.ProofsByBlockID = nil
 		}
 	}
+
+	// register callbacks for all received parents
+	if c.deliverState.Milestone == nil {
+		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
+		for issuer, blockID := range c.deliverState.ParentByIssuer {
+			if _, has := processed[blockID]; has {
+				continue
+			}
+			processed[blockID] = struct{}{}
+
+			// skip, if our proof is already part of the state
+			if proof := c.deliverState.ProofsByBlockID[types.Byte32(blockID)]; proof != nil {
+				if _, has := proof[c.committee.ID()]; has {
+					continue
+				}
+			}
+
+			// register a callback when that block becomes solid
+			c.log.Debugw("awaiting parent", "blockID", blockID)
+			issuer, index := issuer, c.deliverState.MilestoneIndex
+			_ = c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(issuer, index, id) })
+		}
+	}
+
+	return abcitypes.ResponseEndBlock{}
+}
+
+// Commit signals the application to persist the application state.
+// Data must return the hash of the state after all changes from this block have been applied.
+// It will be used to validate consistency between the applications.
+func (c *Coordinator) Commit() abcitypes.ResponseCommit {
+	c.checkState.Lock()
+	defer c.checkState.Unlock()
+	c.deliverState.Lock()
+	defer c.deliverState.Unlock()
+
+	// update the block height
+	c.deliverState.Height++
 
 	// create and broadcast our partial signature
 	if c.deliverState.Milestone != nil && // if we have an essence to sign
@@ -168,27 +196,14 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			panic(err)
 		}
 
+		// the partial signature tx only passes CheckTx once the checkState has been updated to contain the milestone
+		// during commit the mempool is locked, thus broadcasting it here assures that checkState is updated
 		c.log.Debugw("broadcast tx", "partial", partial)
 		c.broadcastQueue.Submit(PartialKey, tx)
 	}
 
-	return abcitypes.ResponseEndBlock{}
-}
-
-// Commit signals the application to persist the application state.
-// Data must return the hash of the state after all changes from this block have been applied.
-// It will be used to validate consistency between the applications.
-func (c *Coordinator) Commit() abcitypes.ResponseCommit {
-	c.checkState.Lock()
-	defer c.checkState.Unlock()
-	c.deliverState.Lock()
-	defer c.deliverState.Unlock()
-
-	// update the block height
-	c.deliverState.Height++
-
 	// if we have a sufficient amount of signatures, the milestone is done
-	if len(c.deliverState.SignaturesByIssuer) > c.committee.N()*2/3 {
+	if c.deliverState.Milestone != nil && len(c.deliverState.SignaturesByIssuer) >= c.committee.T() {
 		// sort partial signatures to generate deterministic milestone payload
 		signatures := make(iotago.Signatures, 0, len(c.deliverState.SignaturesByIssuer))
 		for _, signature := range c.deliverState.SignaturesByIssuer {
@@ -226,6 +241,8 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
 		c.deliverState.Reset(c.deliverState.Height, state)
+
+		// the parent callbacks are no longer relevant
 		c.registry.Clear()
 	}
 
@@ -236,7 +253,15 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 }
 
 func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, blockID iotago.BlockID) {
-	// create a proof referencing this parent
+	// only create proofs for valid tips
+	if valid, err := c.inxClient.ValidTip(blockID); err != nil {
+		panic(err)
+	} else if !valid {
+		c.log.Debugw("invalid tip", "parent", blockID)
+		return
+	}
+
+	// create a proof referencing this valid parent
 	proof := &Proof{Index: index, Parent: blockID}
 	tx, err := MarshalTx(c.committee, proof)
 	if err != nil {

@@ -133,6 +133,7 @@ func provide(c *dig.Container) error {
 			}
 			members = append(members, pubKey[:])
 		}
+
 		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
 		coo, err := decoo.New(committee, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {

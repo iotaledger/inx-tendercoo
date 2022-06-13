@@ -11,58 +11,66 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// ErrInvalidBlockID is returned when the transaction contains an invalid block ID.
-var ErrInvalidBlockID = errors.New("invalid block ID")
+var (
+	// ErrInvalidBlockID is returned when the transaction contains an invalid block ID.
+	ErrInvalidBlockID = errors.New("invalid block ID")
+	// ErrInvalidState is returned when the transaction cannot be applied to the current state.
+	ErrInvalidState = errors.New("invalid state")
+	// ErrReplayed is returned when the same transaction has already been applied.
+	ErrReplayed = errors.New("already applied")
+)
 
 // Tx defines the common interface of a Tendermint transaction.
 type Tx interface {
-	// Apply applies the transaction from issuer to state and returns an error code.
-	Apply(issuer ed25519.PublicKey, state *AppState) uint32
+	// Apply applies the transaction from issuer to state.
+	Apply(issuer ed25519.PublicKey, state *AppState) error
 }
 
+// Parent is a Tendermint transaction proposing BlockID as a parent for milestone with Index.
 type Parent struct {
 	Index   uint32
 	BlockID iotago.BlockID
 }
 
-func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) uint32 {
+func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// proofs are only relevant before we created a milestone
 	if state.Milestone != nil {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// there must be at most one parent per issuer
 	issuerKey := types.Byte32FromSlice(issuer)
 	if _, has := state.ParentByIssuer[issuerKey]; has {
-		return CodeTypeReplayError
+		return ErrReplayed
 	}
 
 	// add the parent to the state
 	state.ParentByIssuer[issuerKey] = p.BlockID
 	state.IssuerCountByParent[types.Byte32(p.BlockID)]++
-	return CodeTypeOK
+	return nil
 }
 
+// Proof is a Tendermint transaction confirming that Parent is a valid parent for milestone with Index.
 type Proof struct {
 	Index  uint32
 	Parent iotago.BlockID
 }
 
-func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) uint32 {
+func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// proofs are only relevant before we created a milestone
 	if state.Milestone != nil {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// the referenced block must be a parent
 	if state.IssuerCountByParent[types.Byte32(p.Parent)] < 1 {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// check that the same proof was not issued already
 	proofs := state.ProofsByBlockID[types.Byte32(p.Parent)]
@@ -71,26 +79,27 @@ func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) uint32 {
 		state.ProofsByBlockID[types.Byte32(p.Parent)] = proofs
 	}
 	if _, has := proofs[types.Byte32FromSlice(issuer)]; has {
-		return CodeTypeReplayError
+		return ErrReplayed
 	}
 
 	// add the proof to the state
 	proofs[types.Byte32FromSlice(issuer)] = struct{}{}
-	return CodeTypeOK
+	return nil
 }
 
+// PartialSignature is a Tendermint transaction providing Signature for the current milestone.
 type PartialSignature struct {
 	Signature []byte
 }
 
-func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) uint32 {
+func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// there must be a milestone essence to sign
 	if state.Milestone == nil {
-		return CodeTypeStateError
+		return ErrInvalidState
 	}
 	// there must be at most one signature per issuer
 	if _, has := state.SignaturesByIssuer[types.Byte32FromSlice(issuer)]; has {
-		return CodeTypeReplayError
+		return ErrReplayed
 	}
 	// the signature must be valid
 	essence, err := state.Milestone.Essence()
@@ -98,7 +107,7 @@ func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) uint
 		panic(err)
 	}
 	if !ed25519.Verify(issuer, essence, p.Signature) {
-		return CodeTypeSyntaxError
+		return ErrInvalidSignature
 	}
 
 	sig := &iotago.Ed25519Signature{}
@@ -107,7 +116,7 @@ func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) uint
 
 	// add the partial signature to the state
 	state.SignaturesByIssuer[types.Byte32FromSlice(issuer)] = sig
-	return CodeTypeOK
+	return nil
 }
 
 // MarshalTx returns the wire-format encoding of m which can then be passed to Tendermint.
