@@ -143,7 +143,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 	// register callbacks for all received parents
 	if c.deliverState.Milestone == nil {
 		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
-		for issuer, blockID := range c.deliverState.ParentByIssuer {
+		for _, blockID := range c.deliverState.ParentByIssuer {
 			if _, has := processed[blockID]; has {
 				continue
 			}
@@ -158,8 +158,8 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
-			issuer, index := issuer, c.deliverState.MilestoneIndex
-			_ = c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(issuer, index, id) })
+			index := c.deliverState.MilestoneIndex
+			_ = c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(index, id) })
 		}
 	}
 
@@ -199,7 +199,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// the partial signature tx only passes CheckTx once the checkState has been updated to contain the milestone
 		// during commit the mempool is locked, thus broadcasting it here assures that checkState is updated
 		c.log.Debugw("broadcast tx", "partial", partial)
-		c.broadcastQueue.Submit(PartialKey, tx)
+		c.broadcastQueue.Submit(tx)
 	}
 
 	// if we have a sufficient amount of signatures, the milestone is done
@@ -252,7 +252,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
-func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint32, blockID iotago.BlockID) {
+func (c *Coordinator) processParent(index uint32, blockID iotago.BlockID) {
 	// only create proofs for valid tips
 	if valid, err := c.inxClient.ValidTip(blockID); err != nil {
 		panic(err)
@@ -268,15 +268,8 @@ func (c *Coordinator) processParent(issuer iotago.MilestonePublicKey, index uint
 		panic(err)
 	}
 
-	// submit the proof for broadcast
-	// keep at most one parent per issuer in the queue
-	member, ok := c.committee.MemberIndex(issuer)
-	if !ok {
-		panic("coordinator: issuer has no index")
-	}
-
-	c.log.Debugw("broadcast tx", "proof", proof, "member", member)
-	c.broadcastQueue.Submit(ProofKey+member, tx)
+	c.log.Debugw("broadcast tx", "proof", proof)
+	c.broadcastQueue.Submit(tx)
 }
 
 func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Milestone) error {

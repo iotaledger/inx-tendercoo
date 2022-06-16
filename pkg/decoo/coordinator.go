@@ -28,14 +28,6 @@ var (
 	ErrNotStarted = errors.New("coordinator not started")
 )
 
-// keys for the broadcastQueue
-const (
-	ParentKey = iota
-	PartialKey
-
-	ProofKey = 0xff // proofs are special as there can be multiple proofs in the queue at the same time
-)
-
 // INXClient contains the functions used from the INX API.
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
@@ -60,7 +52,7 @@ type Coordinator struct {
 	registry       *registry.Registry
 	log            *logger.Logger
 	protoParas     *iotago.ProtocolParameters
-	broadcastQueue *queue.KeyedQueue
+	broadcastQueue *queue.Queue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
 	checkState   AppState
@@ -91,7 +83,9 @@ func New(committee *Committee, inxClient INXClient, registerer registry.EventReg
 		log:        log,
 		protoParas: inxClient.ProtocolParameters(),
 	}
-	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
+	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature
+	maxTransactions := 1 + committee.N() + 1
+	c.broadcastQueue = queue.New(maxTransactions, func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil
 }
 

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"container/ring"
+	"math"
 	"sync"
 	"time"
 )
@@ -9,129 +10,120 @@ import (
 // RetryInterval defines the time between two tries.
 const RetryInterval = 100 * time.Millisecond
 
-// The KeyedQueue holds at most one value per key and retries the execution of each such value until it succeeds.
-type KeyedQueue struct {
-	f func(any) error
+// The Queue stores elements in a ring buffer. The elements are input to f in that order until they are successful.
+// Queue only keeps track of the capacity most recent elements.
+type Queue struct {
+	capacity int
+	f        func(any) error
 
-	byKey map[int]*ring.Ring
-	ring  *ring.Ring
-	timer *time.Timer
+	timer *time.Timer // timer until the next element is processed
+	ring  *ring.Ring  // ring buffer of all elements
+	size  int
 	mu    sync.Mutex
 
-	shutdown chan struct{}
+	shutdownChan chan struct{}
 }
 
-type entry struct {
-	key   int
-	value any
-	nonce uint
-}
-
-// New creates a new KeyedQueue with the execution function f.
-func New(f func(any) error) *KeyedQueue {
-	q := &KeyedQueue{
-		f:        f,
-		byKey:    map[int]*ring.Ring{},
-		ring:     nil,
-		timer:    time.NewTimer(0),
-		shutdown: make(chan struct{}),
+// New creates a new Queue with the execution function f.
+func New(capacity int, f func(any) error) *Queue {
+	if capacity < 1 {
+		panic("queue: capacity must be at least 1")
 	}
-	// drain the channel and start the loop
-	<-q.timer.C
+	q := &Queue{
+		capacity:     capacity,
+		f:            f,
+		timer:        time.NewTimer(math.MaxInt64),
+		ring:         nil,
+		size:         0,
+		shutdownChan: make(chan struct{}),
+	}
+	q.timer.Stop() // make sure that the timer is not running
 	go q.loop()
 	return q
 }
 
 // Stop stops the queue.
-func (q *KeyedQueue) Stop() {
-	close(q.shutdown)
+func (q *Queue) Stop() {
+	close(q.shutdownChan)
 }
 
-// Len returns the number of values in the queue.
-func (q *KeyedQueue) Len() int {
+// Len returns the number of elements in the queue.
+func (q *Queue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return len(q.byKey)
+	return q.size
 }
 
-// Submit adds a new keyed value to the queue.
-func (q *KeyedQueue) Submit(key int, value any) {
+// Submit adds a element to the queue.
+func (q *Queue) Submit(value any) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if p, has := q.byKey[key]; has {
-		// increase the nonce when an entry gets updated
-		p.Value = entry{key, value, p.Value.(entry).nonce + 1}
-		return
-	}
-	if q.ring == nil {
+	if q.size == 0 {
 		q.timer.Reset(0)
+	} else if q.size == q.capacity {
+		q.ringPop()
 	}
-	q.byKey[key] = q.ringInsert(entry{key, value, 0})
+	q.ringPush(value)
 }
 
-func (q *KeyedQueue) loop() {
+func (q *Queue) loop() {
 	for {
 		select {
-		case <-q.shutdown:
-			return
 		case <-q.timer.C:
 			q.process()
+		case <-q.shutdownChan:
+			return
 		}
 	}
 }
 
-func (q *KeyedQueue) current() entry {
+func (q *Queue) process() {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.ring.Value.(entry)
-}
-
-func (q *KeyedQueue) process() {
-	e := q.current()
-	err := q.f(e.value)
+	r := q.ring
+	q.mu.Unlock()
+	err := q.f(r.Value) // execute f without locking the queue
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// if the execution failed, proceed with the next value after a short grace period
+	// if there was an error, pause the next execution
 	if err != nil {
-		q.ring = q.ring.Next()
+		if q.ring == r {
+			q.ring = q.ring.Next() // move to the back of the queue
+		}
 		q.timer.Reset(RetryInterval)
 		return
 	}
-	// if the value has been replaced, proceed with the next value right away
-	if q.ring.Value.(entry).nonce != e.nonce {
-		q.ring = q.ring.Next()
-		q.timer.Reset(0)
-		return
+
+	if q.ring == r {
+		q.ringPop() // remove successfully elements
 	}
-	// otherwise, remove the current element from the ring and the map
-	q.ringRemove(q.ring)
-	delete(q.byKey, e.key)
-	if q.ring != nil {
+	if q.size > 0 {
 		q.timer.Reset(0)
 	}
 }
 
-func (q *KeyedQueue) ringRemove(r *ring.Ring) {
+func (q *Queue) ringPop() any {
+	q.size--
+	val := q.ring.Value
 	n := q.ring.Next()
-	if r == q.ring {
-		if n == q.ring {
-			q.ring = nil
-			return
-		}
-		q.ring = n
+	if n == q.ring {
+		q.ring = nil
+		return val
 	}
-	r.Prev().Link(n)
+	q.ring.Prev().Link(n)
+	q.ring = n
+	return val
 }
 
-func (q *KeyedQueue) ringInsert(e entry) *ring.Ring {
+func (q *Queue) ringPush(val any) {
+	q.size++
 	p := ring.New(1)
-	p.Value = e
+	p.Value = val
 	if q.ring == nil {
 		q.ring = p
-		return p
+		return
 	}
-	return p.Link(q.ring)
+	p.Link(q.ring)
 }
