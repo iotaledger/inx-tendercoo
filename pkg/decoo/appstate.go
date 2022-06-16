@@ -2,10 +2,10 @@ package decoo
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -13,7 +13,7 @@ import (
 // The AppState must have a well-defined hash. For this, the AppState is marshalled into json and the resulting bytes
 // are then hashed using BLAKE2b. The standard json implementation assures, that the marshaling is always deterministic.
 type AppState struct {
-	deadlock.Mutex
+	sync.Mutex
 
 	// Height denotes the height of the Tendermint blockchain.
 	Height int64

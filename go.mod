@@ -10,7 +10,6 @@ require (
 	github.com/iotaledger/inx-app v0.0.0-20220616120123-e78cc8f2b9c2
 	github.com/iotaledger/inx/go v0.0.0-20220615123503-f64096762c65
 	github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56
-	github.com/sasha-s/go-deadlock v0.3.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.2
 	github.com/tendermint/tendermint v0.35.6
@@ -79,6 +78,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/rs/zerolog v1.26.1 // indirect
+	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e // indirect
