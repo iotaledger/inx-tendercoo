@@ -8,6 +8,7 @@ import (
 
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
+	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/builder"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
@@ -159,7 +160,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
 			index := c.deliverState.MilestoneIndex
-			_ = c.registry.RegisterCallback(blockID, func(id iotago.BlockID) { c.processParent(index, id) })
+			_ = c.listener.RegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
 		}
 	}
 
@@ -242,8 +243,8 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		}
 		c.deliverState.Reset(c.deliverState.Height, state)
 
-		// the parent callbacks are no longer relevant
-		c.registry.Clear()
+		// the callbacks are no longer relevant
+		c.listener.ClearBlockSolidCallbacks()
 	}
 
 	// make a deep copy of the state
@@ -252,11 +253,10 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
-func (c *Coordinator) processParent(index uint32, blockID iotago.BlockID) {
-	// only create proofs for valid tips
-	if valid, err := c.inxClient.ValidTip(blockID); err != nil {
-		panic(err)
-	} else if !valid {
+func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
+	blockID := meta.UnwrapBlockID()
+	// only create proofs for solid tips that are not below max depth
+	if !meta.Solid || meta.ReferencedByMilestoneIndex > 0 || meta.ShouldReattach {
 		c.log.Debugw("invalid tip", "parent", blockID)
 		return
 	}

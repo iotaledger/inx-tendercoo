@@ -33,18 +33,6 @@ func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
 	return nil, nil
 }
 
-// ValidTip checks whether the provided block is a valid tip.
-func (c *INXClient) ValidTip(blockID iotago.BlockID) (bool, error) {
-	meta, err := c.BlockMetadata(blockID)
-	if err != nil {
-		return false, err
-	}
-	if !meta.Solid || meta.ReferencedByMilestoneIndex > 0 || meta.ShouldReattach {
-		return false, nil
-	}
-	return true, nil
-}
-
 // ComputeWhiteFlag returns the white-flag merkle tree hashes for the corresponding milestone.
 func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) ([]byte, []byte, error) {
 	latest, err := c.LatestMilestone()

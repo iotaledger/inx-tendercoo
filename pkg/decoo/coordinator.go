@@ -8,7 +8,7 @@ import (
 
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/registry"
+	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
@@ -32,10 +32,15 @@ var (
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
-	ValidTip(iotago.BlockID) (bool, error)
 
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
+}
+
+// TangleListener contains the functions used to listen to Tangle changes.
+type TangleListener interface {
+	RegisterBlockSolidCallback(iotago.BlockID, func(*inx.BlockMetadata)) error
+	ClearBlockSolidCallbacks()
 }
 
 // ABCIClient contains the functions used from the ABCI API.
@@ -47,10 +52,13 @@ type ABCIClient interface {
 type Coordinator struct {
 	abcitypes.BaseApplication // act as a ABCI application for Tendermint
 
-	committee      *Committee
-	inxClient      INXClient
-	registry       *registry.Registry
-	log            *logger.Logger
+	committee *Committee
+	inxClient INXClient
+	listener  TangleListener
+	log       *logger.Logger
+
+	ctx            context.Context
+	cancel         context.CancelFunc
 	protoParas     *iotago.ProtocolParameters
 	broadcastQueue *queue.Queue
 
@@ -60,13 +68,12 @@ type Coordinator struct {
 
 	blockTime time.Time
 
-	ctx        context.Context
 	abciClient ABCIClient
 	started    atomic.Bool
 }
 
 // New creates a new Coordinator.
-func New(committee *Committee, inxClient INXClient, registerer registry.EventRegisterer, log *logger.Logger) (*Coordinator, error) {
+func New(committee *Committee, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be space for at least one honest parent in each milestone
 	if committee.N()/3+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -76,11 +83,14 @@ func New(committee *Committee, inxClient INXClient, registerer registry.EventReg
 		return nil, ErrTooManyValidators
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Coordinator{
 		committee:  committee,
 		inxClient:  inxClient,
-		registry:   registry.New(registerer),
+		listener:   listener,
 		log:        log,
+		ctx:        ctx,
+		cancel:     cancel,
 		protoParas: inxClient.ProtocolParameters(),
 	}
 	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature
@@ -132,8 +142,7 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 }
 
 // Start starts the coordinator using the provided Tendermint RPC client.
-func (c *Coordinator) Start(ctx context.Context, client ABCIClient) error {
-	c.ctx = ctx
+func (c *Coordinator) Start(client ABCIClient) error {
 	c.abciClient = client
 	c.started.Store(true)
 
@@ -144,9 +153,7 @@ func (c *Coordinator) Start(ctx context.Context, client ABCIClient) error {
 // Stop stops the coordinator.
 func (c *Coordinator) Stop() error {
 	c.started.Store(false)
-	if err := c.registry.Close(); err != nil {
-		return err
-	}
+	c.cancel()
 	c.broadcastQueue.Stop()
 	return nil
 }

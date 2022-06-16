@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
+	inxutils "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/stretchr/testify/require"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
@@ -17,24 +17,23 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 )
 
+const (
+	waitFor = time.Second
+	tick    = 10 * time.Millisecond
+)
+
 var (
 	seed      = [ed25519.SeedSize]byte{42}
 	private   = ed25519.NewKeyFromSeed(seed[:])
 	public    = private.Public().(ed25519.PublicKey)
 	committee = decoo.NewCommittee(private, public)
-
-	closed = func() chan struct{} {
-		c := make(chan struct{})
-		close(c)
-		return c
-	}()
 )
 
 func TestSingleValidator(t *testing.T) {
 	inx := &INXMock{
 		t:                   t,
 		solidBlocks:         map[iotago.BlockID]struct{}{iotago.EmptyBlockID(): {}},
-		blockSolidSyncEvent: events.NewSyncEvent(),
+		blockSolidCallbacks: map[iotago.BlockID]func(*inxutils.BlockMetadata){},
 	}
 	abci := &ABCIMock{}
 
@@ -44,11 +43,11 @@ func TestSingleValidator(t *testing.T) {
 
 		require.NoError(t, c.InitState(true, 1, [32]byte{}, [32]byte{}))
 		abci.Application = c
-		require.NoError(t, c.Start(context.Background(), abci))
+		require.NoError(t, c.Start(abci))
 
 		for i := uint32(1); i < 10; i++ {
 			require.NoError(t, c.ProposeParent(i, inx.LatestMilestoneBlockID()))
-			require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == i }, time.Second, 10*time.Millisecond)
+			require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == i }, waitFor, tick)
 		}
 		require.NoError(t, c.ProposeParent(inx.LatestMilestoneIndex()+1, inx.LatestMilestoneBlockID()))
 		require.NoError(t, c.Stop())
@@ -62,11 +61,11 @@ func TestSingleValidator(t *testing.T) {
 		require.NoError(t, c.InitState(false, 0, [32]byte{}, [32]byte{}))
 		abci.Application = c
 		abci.Replay()
-		require.NoError(t, c.Start(context.Background(), abci))
+		require.NoError(t, c.Start(abci))
 
 		index := inx.LatestMilestoneIndex() + 1
 		require.NoError(t, c.ProposeParent(index, inx.LatestMilestoneBlockID()))
-		require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == index }, time.Second, 10*time.Millisecond)
+		require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == index }, waitFor, tick)
 		require.NoError(t, c.Stop())
 	})
 }
@@ -78,7 +77,7 @@ type INXMock struct {
 
 	milestones          []*iotago.Block
 	solidBlocks         map[iotago.BlockID]struct{}
-	blockSolidSyncEvent *events.SyncEvent
+	blockSolidCallbacks map[iotago.BlockID]func(*inxutils.BlockMetadata)
 }
 
 func (m *INXMock) ProtocolParameters() *iotago.ProtocolParameters {
@@ -136,7 +135,10 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 	}
 
 	m.solidBlocks[id] = struct{}{}
-	m.blockSolidSyncEvent.Trigger(id)
+	if f, ok := m.blockSolidCallbacks[id]; ok {
+		go f(&inxutils.BlockMetadata{BlockId: inxutils.NewBlockId(id), Solid: true})
+		delete(m.blockSolidCallbacks, id)
+	}
 	return id, nil
 }
 
@@ -147,17 +149,20 @@ func (m *INXMock) ComputeWhiteFlag(ctx context.Context, index uint32, _ uint32, 
 	return make([]byte, iotago.MilestoneMerkleProofLength), make([]byte, iotago.MilestoneMerkleProofLength), nil
 }
 
-func (m *INXMock) RegisterBlockSolidEvent(id iotago.BlockID) chan struct{} {
+func (m *INXMock) RegisterBlockSolidCallback(id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
 	m.Lock()
 	defer m.Unlock()
 	if _, ok := m.solidBlocks[id]; ok {
-		return closed
+		go f(&inxutils.BlockMetadata{BlockId: inxutils.NewBlockId(id), Solid: true})
 	}
-	return m.blockSolidSyncEvent.RegisterEvent(id)
+	m.blockSolidCallbacks[id] = f
+	return nil
 }
 
-func (m *INXMock) DeregisterBlockSolidEvent(id iotago.BlockID) {
-	m.blockSolidSyncEvent.DeregisterEvent(id)
+func (m *INXMock) ClearBlockSolidCallbacks() {
+	m.Lock()
+	defer m.Unlock()
+	m.blockSolidCallbacks = map[iotago.BlockID]func(*inxutils.BlockMetadata){}
 }
 
 func (m *INXMock) LatestMilestoneBlockID() iotago.BlockID {
@@ -198,12 +203,22 @@ func (m *INXMock) latestMilestoneID() iotago.MilestoneID {
 }
 
 type ABCIMock struct {
+	sync.Mutex
 	abcitypes.Application
 
 	Txs []tmtypes.Tx
 }
 
-func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.ResultBroadcastTx, error) {
+func (m *ABCIMock) BroadcastTxSync(ctx context.Context, tx tmtypes.Tx) (*tmcore.ResultBroadcastTx, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	// trigger a new block containing that transaction
 	m.BeginBlock(abcitypes.RequestBeginBlock{})
 	m.DeliverTx(abcitypes.RequestDeliverTx{Tx: tx})
@@ -215,6 +230,9 @@ func (m *ABCIMock) BroadcastTxSync(_ context.Context, tx tmtypes.Tx) (*tmcore.Re
 }
 
 func (m *ABCIMock) Replay() {
+	m.Lock()
+	defer m.Unlock()
+
 	resp := m.Info(abcitypes.RequestInfo{})
 	for i := resp.LastBlockHeight; i < int64(len(m.Txs)); i++ {
 		m.BeginBlock(abcitypes.RequestBeginBlock{})

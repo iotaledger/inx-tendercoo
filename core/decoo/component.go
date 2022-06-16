@@ -273,7 +273,7 @@ func run() error {
 		if err != nil {
 			CoreComponent.LogPanicf("invalid Tendermint node: %s", err)
 		}
-		if err := deps.Coordinator.Start(ctx, rpc); err != nil {
+		if err := deps.Coordinator.Start(rpc); err != nil {
 			CoreComponent.LogPanicf("failed to start: %s", err)
 		}
 		CoreComponent.LogInfo("Starting " + decooWorkerName + " ... done")

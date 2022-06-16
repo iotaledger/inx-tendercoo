@@ -18,10 +18,11 @@ type Queue struct {
 
 	timer *time.Timer // timer until the next element is processed
 	ring  *ring.Ring  // ring buffer of all elements
-	size  int
+	size  int         // number of elements in the buffer
 	mu    sync.Mutex
 
-	shutdownChan chan struct{}
+	wg       sync.WaitGroup
+	shutdown chan struct{}
 }
 
 // New creates a new Queue with the execution function f.
@@ -30,21 +31,24 @@ func New(capacity int, f func(any) error) *Queue {
 		panic("queue: capacity must be at least 1")
 	}
 	q := &Queue{
-		capacity:     capacity,
-		f:            f,
-		timer:        time.NewTimer(math.MaxInt64),
-		ring:         nil,
-		size:         0,
-		shutdownChan: make(chan struct{}),
+		capacity: capacity,
+		f:        f,
+		timer:    time.NewTimer(math.MaxInt64),
+		ring:     nil,
+		size:     0,
+		shutdown: make(chan struct{}),
 	}
 	q.timer.Stop() // make sure that the timer is not running
+	q.wg.Add(1)
 	go q.loop()
 	return q
 }
 
 // Stop stops the queue.
+// It blocks until the last execution function has finished.
 func (q *Queue) Stop() {
-	close(q.shutdownChan)
+	close(q.shutdown)
+	q.wg.Wait()
 }
 
 // Len returns the number of elements in the queue.
@@ -68,11 +72,12 @@ func (q *Queue) Submit(value any) {
 }
 
 func (q *Queue) loop() {
+	defer q.wg.Done()
 	for {
 		select {
 		case <-q.timer.C:
 			q.process()
-		case <-q.shutdownChan:
+		case <-q.shutdown:
 			return
 		}
 	}
@@ -97,7 +102,7 @@ func (q *Queue) process() {
 	}
 
 	if q.ring == r {
-		q.ringPop() // remove successfully elements
+		q.ringPop() // remove successful elements
 	}
 	if q.size > 0 {
 		q.timer.Reset(0)
