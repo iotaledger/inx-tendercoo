@@ -41,7 +41,7 @@ func TestSingleValidator(t *testing.T) {
 		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
-		require.NoError(t, c.InitState(true, 1, [32]byte{}, [32]byte{}))
+		require.NoError(t, c.Bootstrap(1, [32]byte{}, [32]byte{}))
 		abci.Application = c
 		require.NoError(t, c.Start(abci))
 
@@ -58,7 +58,9 @@ func TestSingleValidator(t *testing.T) {
 		require.NoError(t, err)
 
 		// init from state and replay missing transactions
-		require.NoError(t, c.InitState(false, 0, [32]byte{}, [32]byte{}))
+		ms, err := inx.LatestMilestone()
+		require.NoError(t, err)
+		require.NoError(t, c.InitState(ms))
 		abci.Application = c
 		abci.Replay()
 		require.NoError(t, c.Start(abci))
