@@ -3,7 +3,6 @@ package decoo
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
@@ -208,7 +207,6 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		for _, signature := range c.deliverState.SignaturesByIssuer {
 			signatures = append(signatures, signature)
 		}
-		sort.Sort(signatures)
 		// add the signatures to the milestone
 		c.deliverState.Milestone.Signatures = signatures
 
