@@ -245,6 +245,8 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 		// the callbacks are no longer relevant
 		c.listener.ClearBlockSolidCallbacks()
+		// trigger an event for the new milestone index
+		c.stateMilestoneIndexSyncEvent.Trigger(state.MilestoneIndex)
 	}
 
 	// make a deep copy of the state
