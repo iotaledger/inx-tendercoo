@@ -9,7 +9,7 @@ require (
 	github.com/iotaledger/hornet v1.1.0-rc1.0.20220530165211-a0805cb7cbe0
 	github.com/iotaledger/inx-app v0.0.0-20220616120123-e78cc8f2b9c2
 	github.com/iotaledger/inx/go v0.0.0-20220615123503-f64096762c65
-	github.com/iotaledger/iota.go/v3 v3.0.0-20220530132039-ec319e60cc56
+	github.com/iotaledger/iota.go/v3 v3.0.0-20220616082804-f993b18e4ecf
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.2
 	github.com/tendermint/tendermint v0.35.6
@@ -88,7 +88,7 @@ require (
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/net v0.0.0-20220614195744-fb05da6f9022 // indirect
-	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29 // indirect
+	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/sys v0.0.0-20220614162138-6c1b26c55098 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect

@@ -49,7 +49,7 @@ func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 
 	// add the parent to the state
 	state.ParentByIssuer[issuerKey] = p.BlockID
-	state.IssuerCountByParent[types.Byte32(p.BlockID)]++
+	state.IssuerCountByParent[p.BlockID]++
 	return nil
 }
 
@@ -69,14 +69,14 @@ func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 		return ErrInvalidState
 	}
 	// the referenced block must be a parent
-	if state.IssuerCountByParent[types.Byte32(p.Parent)] < 1 {
+	if state.IssuerCountByParent[p.Parent] < 1 {
 		return ErrInvalidState
 	}
 	// check that the same proof was not issued already
-	proofs := state.ProofsByBlockID[types.Byte32(p.Parent)]
+	proofs := state.ProofIssuersByBlockID[p.Parent]
 	if proofs == nil {
 		proofs = map[types.Byte32]struct{}{}
-		state.ProofsByBlockID[types.Byte32(p.Parent)] = proofs
+		state.ProofIssuersByBlockID[p.Parent] = proofs
 	}
 	if _, has := proofs[types.Byte32FromSlice(issuer)]; has {
 		return ErrReplayed

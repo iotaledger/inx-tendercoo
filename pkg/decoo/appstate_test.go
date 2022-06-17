@@ -87,11 +87,11 @@ func randState() *decoo.AppState {
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 		},
-		IssuerCountByParent: map[types.Byte32]int{
+		IssuerCountByParent: map[iotago.BlockID]int{
 			tpkg.Rand32ByteArray(): rand.Int(),
 			tpkg.Rand32ByteArray(): rand.Int(),
 		},
-		ProofsByBlockID: map[types.Byte32]map[types.Byte32]void{
+		ProofIssuersByBlockID: map[iotago.BlockID]map[types.Byte32]void{
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 		},

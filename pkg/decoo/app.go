@@ -1,7 +1,6 @@
 package decoo
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -106,10 +105,9 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 		// collect parents that have sufficient proofs
 		parentWeight := 0
 		var parents iotago.BlockIDs
-		for blockIDKey, preMsProofs := range c.deliverState.ProofsByBlockID {
-			if c.deliverState.IssuerCountByParent[blockIDKey] > 0 && len(preMsProofs) > c.committee.N()/3 {
-				parentWeight += c.deliverState.IssuerCountByParent[blockIDKey]
-				blockID := iotago.BlockID(blockIDKey)
+		for blockID, preMsProofs := range c.deliverState.ProofIssuersByBlockID {
+			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(preMsProofs) > c.committee.N()/3 {
+				parentWeight += c.deliverState.IssuerCountByParent[blockID]
 				// the last milestone block ID will be added later anyway
 				if blockID != c.deliverState.LastMilestoneBlockID {
 					parents = append(parents, blockID)
@@ -151,7 +149,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			processed[blockID] = struct{}{}
 
 			// skip, if our proof is already part of the state
-			if proof := c.deliverState.ProofsByBlockID[types.Byte32(blockID)]; proof != nil {
+			if proof := c.deliverState.ProofIssuersByBlockID[blockID]; proof != nil {
 				if _, has := proof[c.committee.ID()]; has {
 					continue
 				}
@@ -210,11 +208,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		for _, signature := range c.deliverState.SignaturesByIssuer {
 			signatures = append(signatures, signature)
 		}
-		sort.Slice(signatures, func(i, j int) bool {
-			return bytes.Compare(
-				signatures[i].(*iotago.Ed25519Signature).PublicKey[:],
-				signatures[j].(*iotago.Ed25519Signature).PublicKey[:]) < 0
-		})
+		sort.Sort(signatures)
 		// add the signatures to the milestone
 		c.deliverState.Milestone.Signatures = signatures
 

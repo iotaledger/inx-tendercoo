@@ -21,17 +21,17 @@ type AppState struct {
 	// State contains the coordinator state.
 	State
 
-	// ParentByIssuer contains the proposed parent IDs sorted by the proposers PublicKey.
+	// ParentByIssuer contains the proposed block IDs sorted by the proposer's public key.
 	ParentByIssuer map[types.Byte32]iotago.BlockID
-	// IssuerCountByParent counts the issuers of each parent
-	IssuerCountByParent map[types.Byte32]int
+	// IssuerCountByParent counts the issuers of each parent.
+	IssuerCountByParent map[iotago.BlockID]int
 
-	// ProofsByBlockID contains the received proofs sorted by Proof.ParentId and Proof.PublicKey.
-	ProofsByBlockID map[types.Byte32]map[types.Byte32]struct{}
+	// ProofIssuersByBlockID contains the public key of each proof sorted by its block ID.
+	ProofIssuersByBlockID map[iotago.BlockID]map[types.Byte32]struct{}
 
 	// Milestone contains the constructed Milestone, or nil if we are still collecting proofs.
 	Milestone *iotago.Milestone
-	// SignaturesByIssuer contains the received Signature sorted by Signature.PublicKey.
+	// SignaturesByIssuer contains the milestone signatures sorted by the signer's public key.
 	SignaturesByIssuer map[types.Byte32]*iotago.Ed25519Signature
 }
 
@@ -46,8 +46,8 @@ func (a *AppState) Reset(height int64, state *State) {
 	a.Height = height
 	a.State = *state
 	a.ParentByIssuer = map[types.Byte32]iotago.BlockID{}
-	a.IssuerCountByParent = map[types.Byte32]int{}
-	a.ProofsByBlockID = map[types.Byte32]map[types.Byte32]struct{}{}
+	a.IssuerCountByParent = map[iotago.BlockID]int{}
+	a.ProofIssuersByBlockID = map[iotago.BlockID]map[types.Byte32]struct{}{}
 	a.Milestone = nil
 	a.SignaturesByIssuer = map[types.Byte32]*iotago.Ed25519Signature{}
 }
