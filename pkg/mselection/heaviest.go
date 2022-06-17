@@ -24,10 +24,10 @@ type HeaviestSelector struct {
 
 	// maximum amount of tips returned by SelectTips
 	maxTips int
-	// minimum threshold for the unreferenced blocks when SelectTips is cancelled
-	unreferencedBlocksThreshold int
 	// timeout after which SelectTips is cancelled
 	timeout time.Duration
+	// when the fraction of newly referenced blocks compared to the best is below this limit, SelectTips is cancelled
+	reducedConfirmationLimit float64
 
 	// map of all tracked blocks
 	trackedBlocks map[iotago.BlockID]*trackedBlock
@@ -69,11 +69,11 @@ func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
 }
 
 // New creates a new HeaviestSelector instance.
-func New(maxTips int, minUnreferencedBlocksThreshold int, timeout time.Duration) *HeaviestSelector {
+func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *HeaviestSelector {
 	s := &HeaviestSelector{
-		maxTips:                     maxTips,
-		unreferencedBlocksThreshold: minUnreferencedBlocksThreshold,
-		timeout:                     timeout,
+		maxTips:                  maxTips,
+		timeout:                  timeout,
+		reducedConfirmationLimit: reducedConfirmationLimit,
 	}
 	s.Reset()
 	return s
@@ -159,12 +159,14 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
-	deadlineExceeded := false
-
+	var first uint
 	for i := 0; i < s.maxTips; i++ {
 		select {
 		case <-ctx.Done():
-			deadlineExceeded = true
+			// stop if we already have sufficient number of tips
+			if len(tips) > minRequiredTips {
+				break
+			}
 		default:
 		}
 
@@ -172,10 +174,12 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 		if err != nil {
 			break
 		}
+		if i == 0 {
+			first = count
+		}
 
-		if (len(tips) > minRequiredTips) && ((count < uint(s.unreferencedBlocksThreshold)) || deadlineExceeded) {
-			// minimum amount of tips reached and the heaviest tips do not confirm enough blocks or the deadline was exceeded
-			// => no need to collect more
+		// stop if the latest tip confirms too few transactions compared to the first
+		if len(tips) > minRequiredTips && float64(count)/float64(first) < s.reducedConfirmationLimit {
 			break
 		}
 

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	TestMinUnreferencedBlocksThreshold = 20
-	TestMaxTips                        = 10
-	TestTimeout                        = 100
+	TestMaxTips                  = 10
+	TestReducedConfirmationLimit = 1
+	TestTimeout                  = 100
 
 	numTestBlocks      = 32 * 100
 	numBenchmarkBlocks = 5000
@@ -24,7 +24,7 @@ func init() {
 }
 
 func newHPS() *HeaviestSelector {
-	return New(TestMaxTips, TestMinUnreferencedBlocksThreshold, TestTimeout)
+	return New(TestMaxTips, TestReducedConfirmationLimit, TestTimeout)
 }
 
 func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
