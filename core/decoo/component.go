@@ -216,6 +216,7 @@ func configure() error {
 		// add tips to the heaviest branch selector
 		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
+			CoreComponent.LogInfo("trigger next milestone preemptively")
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
 			if latestMilestone.TryLock() {
 				defer latestMilestone.Unlock()
@@ -231,6 +232,7 @@ func configure() error {
 
 	// after a new milestone is confirmed, restart the selector and process the new milestone
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
+		CoreComponent.LogInfof("new confirmed milestone: %d", milestone.Milestone.Index)
 		// process the milestone for the coordinator
 		processMilestone(milestone.Milestone)
 	})
@@ -318,14 +320,19 @@ func coordinatorLoop(ctx context.Context) {
 	var info milestoneInfo
 	for {
 		select {
-		case <-timer.C: // propose a parent for the milestone with index
+		case <-timer.C: // propose a parent for the next milestone
+			CoreComponent.LogInfo("proposing parent for milestone %d", info.index+1)
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
 				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
 				// use the previous milestone block as fallback
 				tips = iotago.BlockIDs{info.milestoneBlockID}
 			}
-			// propose a random tip
+			// make sure that at least one second has passed since the last milestone
+			if d := time.Until(info.timestamp.Add(time.Second)); d > 0 {
+				time.Sleep(d)
+			}
+			// propose a random tip as parent for the next milestone
 			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	inx "github.com/iotaledger/inx/go"
@@ -57,10 +58,11 @@ type Coordinator struct {
 	listener  TangleListener
 	log       *logger.Logger
 
-	ctx            context.Context
-	cancel         context.CancelFunc
-	protoParas     *iotago.ProtocolParameters
-	broadcastQueue *queue.Queue
+	ctx                          context.Context
+	cancel                       context.CancelFunc
+	protoParas                   *iotago.ProtocolParameters
+	stateMilestoneIndexSyncEvent *events.SyncEvent
+	broadcastQueue               *queue.Queue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
 	checkState   AppState
@@ -85,13 +87,14 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Coordinator{
-		committee:  committee,
-		inxClient:  inxClient,
-		listener:   listener,
-		log:        log,
-		ctx:        ctx,
-		cancel:     cancel,
-		protoParas: inxClient.ProtocolParameters(),
+		committee:                    committee,
+		inxClient:                    inxClient,
+		listener:                     listener,
+		log:                          log,
+		ctx:                          ctx,
+		cancel:                       cancel,
+		protoParas:                   inxClient.ProtocolParameters(),
+		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
 	}
 	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature
 	maxTransactions := 1 + committee.N() + 1
@@ -158,7 +161,15 @@ func (c *Coordinator) Stop() error {
 	return nil
 }
 
-// ProposeParent proposes a parent for the milestone with the given index.
+// MilestoneIndex returns the milestone index of the current coordinator state.
+func (c *Coordinator) MilestoneIndex() uint32 {
+	c.checkState.Lock()
+	defer c.checkState.Unlock()
+	return c.checkState.MilestoneIndex
+}
+
+// ProposeParent proposes blockID as a parent for the milestone with the given index.
+// It blocks until the proposal has been processed by Tendermint.
 func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error {
 	if !c.started.Load() {
 		return ErrNotStarted
@@ -170,9 +181,20 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 		panic(err)
 	}
 
+	// wait until the state matches the proposal index
+	if err := events.WaitForChannelClosed(c.ctx, c.registerStateMilestoneIndexEvent(index)); err != nil {
+		return err
+	}
+
 	c.log.Debugw("broadcast tx", "parent", parent)
-	_, err = c.abciClient.BroadcastTxSync(c.ctx, tx)
-	return err
+	res, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	if err != nil {
+		return err
+	}
+	if res.Code != CodeTypeOK {
+		return fmt.Errorf("invalid proposal: %s", res.Log)
+	}
+	return nil
 }
 
 func (c *Coordinator) initState(height int64, state *State) {
@@ -183,6 +205,14 @@ func (c *Coordinator) initState(height int64, state *State) {
 
 	c.checkState.Reset(height, state)
 	c.deliverState.Reset(height, state)
+}
+
+func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct{} {
+	ch := c.stateMilestoneIndexSyncEvent.RegisterEvent(index)
+	if index <= c.MilestoneIndex() {
+		c.stateMilestoneIndexSyncEvent.Trigger(index)
+	}
+	return ch
 }
 
 func (c *Coordinator) broadcastTx(tx []byte) error {
