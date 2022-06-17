@@ -230,7 +230,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		state := &State{
 			MilestoneHeight:      c.deliverState.Height,
 			MilestoneIndex:       c.deliverState.MilestoneIndex + 1,
-			LastMilestoneID:      MilestoneID(c.deliverState.Milestone),
+			LastMilestoneID:      c.deliverState.Milestone.MustID(),
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
 		c.deliverState.Reset(c.deliverState.Height, state)
@@ -284,15 +284,6 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	c.log.Debugw("milestone issued", "blockID", latestMilestoneBlockID, "payload", msg.Payload)
 
 	return nil
-}
-
-// MilestoneID returns the block ID of the given milestone.
-func MilestoneID(ms *iotago.Milestone) iotago.MilestoneID {
-	id, err := ms.ID()
-	if err != nil {
-		panic(err)
-	}
-	return id
 }
 
 // MilestoneBlockID returns the block ID of the given milestone.
