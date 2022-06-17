@@ -175,7 +175,7 @@ func provide(c *dig.Container) error {
 
 	// provide the heaviest branch selection strategy
 	if err := c.Provide(func() *mselection.HeaviestSelector {
-		return mselection.New(Parameters.TipSel.MaxTips, Parameters.TipSel.UnreferencedBlocksThreshold, Parameters.TipSel.Timeout)
+		return mselection.New(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
 	}); err != nil {
 		return err
 	}
