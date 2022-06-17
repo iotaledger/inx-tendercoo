@@ -218,20 +218,20 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// add the signatures to the milestone
 		c.deliverState.Milestone.Signatures = signatures
 
-		// create and issue the milestone block, if its index is new and the coordinator is running
-		if c.started.Load() {
-			latest, err := c.inxClient.LatestMilestone()
-			if err != nil {
-				c.log.Errorf("failed to get latest milestone: %s", err)
-			}
-			if latest == nil || c.deliverState.MilestoneIndex > latest.Index {
-				ms := *c.deliverState.Milestone
-				go func() {
-					if err := c.createAndSendMilestone(c.ctx, ms); err != nil {
-						panic(err)
-					}
-				}()
-			}
+		// create and issue the milestone, if it is newer than the latest available milestone
+		latest, err := c.inxClient.LatestMilestone()
+		if err != nil {
+			c.log.Errorf("failed to get latest milestone: %s", err)
+		}
+		if latest == nil || c.deliverState.Milestone.Index > latest.Index {
+			ms := *c.deliverState.Milestone
+			go func() {
+				if err := c.createAndSendMilestone(c.ctx, ms); err != nil {
+					panic(err)
+				}
+			}()
+		} else {
+			c.log.Debugw("milestone skipped", "index", c.deliverState.Milestone.Index, "latest", latest.Index)
 		}
 
 		// reset the state for the next milestone
@@ -251,7 +251,6 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 	// make a deep copy of the state
 	c.checkState.Copy(&c.deliverState)
-
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
