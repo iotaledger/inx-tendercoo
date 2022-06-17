@@ -102,33 +102,17 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 	return c, nil
 }
 
-// InitState initializes the Coordinator.
-// It needs to be called before Start.
-func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+// Bootstrap bootstraps the coordinator with the give state.
+func (c *Coordinator) Bootstrap(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
 	latest, err := c.inxClient.LatestMilestone()
 	if err != nil {
-		return fmt.Errorf("failed to get latest milestone: %w", err)
-	}
-
-	// try to resume the network
-	if !bootstrap {
-		if latest == nil {
-			return fmt.Errorf("resume failed: no milestone available")
-		}
-		state, err := NewStateFromMilestone(latest)
-		if err != nil {
-			return fmt.Errorf("resume failed: milestone %d contains invalid metadata: %w", latest.Index, err)
-		}
-
-		c.initState(state.MilestoneHeight, state)
-		c.log.Infow("coordinator resumed", "state", state)
-		return nil
+		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
 	}
 
 	// assure that we do not re-bootstrap a network
 	if latest != nil {
 		if _, err := NewStateFromMilestone(latest); err == nil {
-			return fmt.Errorf("bootstrap failed: milestone %d contains a valid state", latest.Index)
+			return fmt.Errorf("milestone %d contains a valid state", latest.Index)
 		}
 	}
 
@@ -141,6 +125,18 @@ func (c *Coordinator) InitState(bootstrap bool, index uint32, milestoneID iotago
 	}
 	c.initState(0, state)
 	c.log.Infow("coordinator bootstrapped", "state", state)
+	return nil
+}
+
+// InitState initializes the coordinator to the state corresponding to the given milestone.
+func (c *Coordinator) InitState(ms *iotago.Milestone) error {
+	state, err := NewStateFromMilestone(ms)
+	if err != nil {
+		return fmt.Errorf("milestone %d contains invalid metadata: %w", ms.Index, err)
+	}
+
+	c.initState(state.MilestoneHeight, state)
+	c.log.Infow("coordinator resumed", "state", state)
 	return nil
 }
 

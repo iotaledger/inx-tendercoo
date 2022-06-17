@@ -23,8 +23,10 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 	flag "github.com/spf13/pflag"
 	abciclient "github.com/tendermint/tendermint/abci/client"
+	"github.com/tendermint/tendermint/config"
 	tmservice "github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
+	"github.com/tendermint/tendermint/privval"
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
@@ -77,7 +79,7 @@ var (
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 
-	latestMilestone struct {
+	confirmedMilestone struct {
 		sync.Mutex
 		milestoneInfo
 	}
@@ -137,11 +139,6 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
-		// load the state or initialize with the given values
-		err = coo.InitState(bootstrap, startIndex, startMilestoneID, startMilestoneBlockID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize: %w", err)
-		}
 		return coo, nil
 	}); err != nil {
 		return err
@@ -152,6 +149,7 @@ func provide(c *dig.Container) error {
 		dig.In
 		CoordinatorPrivateKey ed25519.PrivateKey
 		Coordinator           *decoo.Coordinator
+		NodeBridge            *nodebridge.NodeBridge
 	}
 	if err := c.Provide(func(deps tendermintDeps) (tmservice.Service, error) {
 		CoreComponent.LogInfo("Providing Tendermint ...")
@@ -161,6 +159,11 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
+		// initialize the coordinator compatible with the configured Tendermint state
+		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, conf); err != nil {
+			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
+		}
+
 		// use a separate logger for Tendermint
 		log := logger.NewLogger("Tendermint")
 		lvl, err := zapcore.ParseLevel(Parameters.Tendermint.LogLevel)
@@ -183,29 +186,54 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
-func processMilestone(milestone *iotago.Milestone) {
-	latestMilestone.Lock()
-	defer latestMilestone.Unlock()
-
-	if milestone.Index < latestMilestone.index+1 {
-		return
+func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, conf *config.Config) error {
+	if bootstrap {
+		if err := coordinator.Bootstrap(startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
+			return fmt.Errorf("bootstrap failed: %w", err)
+		}
+		return nil
 	}
 
-	latestMilestone.index = milestone.Index
-	latestMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
-	latestMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
-	newMilestoneSignal <- latestMilestone.milestoneInfo
+	pv, _ := privval.LoadFilePV(conf.PrivValidator.KeyFile(), conf.PrivValidator.StateFile())
+	tendermintHeight := pv.LastSignState.Height
+
+	// start from the latest confirmed milestone as the node should contain its previous milestones
+	ms, err := nodeBridge.ConfirmedMilestone()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
+	}
+
+	// find a milestone that is compatible with the Tendermint block height
+	for {
+		state, err := decoo.NewStateFromMilestone(ms.Milestone)
+		if err != nil {
+			return fmt.Errorf("milestone %d contains invalid metadata: %w", ms.Milestone.Index, err)
+		}
+		if tendermintHeight >= state.MilestoneHeight {
+			break
+		}
+		// try the previous milestone
+		ms, err = nodeBridge.Milestone(state.MilestoneIndex - 1)
+		if err != nil || ms == nil {
+			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
+		}
+	}
+
+	if err := coordinator.InitState(ms.Milestone); err != nil {
+		return fmt.Errorf("resume failed: %w", err)
+	}
+	return nil
 }
 
 func configure() error {
 	newMilestoneSignal = make(chan milestoneInfo, 1)
 	if bootstrap {
 		// initialized the latest milestone with the provided dummy values
-		latestMilestone.index = startIndex - 1
-		latestMilestone.timestamp = time.Now()
-		latestMilestone.milestoneBlockID = startMilestoneBlockID
+		confirmedMilestone.index = startIndex - 1
+		confirmedMilestone.timestamp = time.Now()
+		confirmedMilestone.milestoneBlockID = startMilestoneBlockID
 		// trigger issuing a milestone for that index
-		newMilestoneSignal <- latestMilestone.milestoneInfo
+		newMilestoneSignal <- confirmedMilestone.milestoneInfo
 	}
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
@@ -218,12 +246,12 @@ func configure() error {
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
 			CoreComponent.LogInfo("trigger next milestone preemptively")
 			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
-			if latestMilestone.TryLock() {
-				defer latestMilestone.Unlock()
+			if confirmedMilestone.TryLock() {
+				defer confirmedMilestone.Unlock()
 
 				// if a new milestone has already been received, there is no need to preemptively trigger it
 				select {
-				case newMilestoneSignal <- latestMilestone.milestoneInfo:
+				case newMilestoneSignal <- confirmedMilestone.milestoneInfo:
 				default:
 				}
 			}
@@ -321,7 +349,7 @@ func coordinatorLoop(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
-			CoreComponent.LogInfo("proposing parent for milestone %d", info.index+1)
+			CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
 				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
@@ -372,6 +400,20 @@ func attachEvents() {
 func detachEvents() {
 	deps.TangleListener.Events.BlockSolid.Detach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
+}
+
+func processMilestone(milestone *iotago.Milestone) {
+	confirmedMilestone.Lock()
+	defer confirmedMilestone.Unlock()
+
+	if milestone.Index < confirmedMilestone.index+1 {
+		return
+	}
+
+	confirmedMilestone.index = milestone.Index
+	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
+	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
+	newMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
 // loadEd25519PrivateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
