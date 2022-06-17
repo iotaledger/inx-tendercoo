@@ -325,7 +325,11 @@ func coordinatorLoop(ctx context.Context) {
 				// use the previous milestone block as fallback
 				tips = iotago.BlockIDs{info.milestoneBlockID}
 			}
-			// propose a random tip
+			// make sure that at least one second has passed since the last milestone
+			if d := time.Until(info.timestamp.Add(time.Second)); d > 0 {
+				time.Sleep(d)
+			}
+			// propose a random tip as parent for the next milestone
 			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
