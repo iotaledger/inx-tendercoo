@@ -76,7 +76,7 @@ func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	issuerID := IDFromPublicKey(issuer)
 	proofs := state.ProofIssuersByBlockID[p.Parent]
 	if proofs == nil {
-		proofs = map[types.Byte32]struct{}{}
+		proofs = map[PeerID]struct{}{}
 		state.ProofIssuersByBlockID[p.Parent] = proofs
 	}
 	if _, has := proofs[issuerID]; has {
