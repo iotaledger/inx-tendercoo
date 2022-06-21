@@ -1,10 +1,8 @@
 package decoo
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
@@ -106,10 +104,9 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 		// collect parents that have sufficient proofs
 		parentWeight := 0
 		var parents iotago.BlockIDs
-		for blockIDKey, preMsProofs := range c.deliverState.ProofsByBlockID {
-			if c.deliverState.IssuerCountByParent[blockIDKey] > 0 && len(preMsProofs) > c.committee.N()/3 {
-				parentWeight += c.deliverState.IssuerCountByParent[blockIDKey]
-				blockID := iotago.BlockID(blockIDKey)
+		for blockID, preMsProofs := range c.deliverState.ProofIssuersByBlockID {
+			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(preMsProofs) > c.committee.N()/3 {
+				parentWeight += c.deliverState.IssuerCountByParent[blockID]
 				// the last milestone block ID will be added later anyway
 				if blockID != c.deliverState.LastMilestoneBlockID {
 					parents = append(parents, blockID)
@@ -151,7 +148,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			processed[blockID] = struct{}{}
 
 			// skip, if our proof is already part of the state
-			if proof := c.deliverState.ProofsByBlockID[types.Byte32(blockID)]; proof != nil {
+			if proof := c.deliverState.ProofIssuersByBlockID[blockID]; proof != nil {
 				if _, has := proof[c.committee.ID()]; has {
 					continue
 				}
@@ -210,11 +207,6 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		for _, signature := range c.deliverState.SignaturesByIssuer {
 			signatures = append(signatures, signature)
 		}
-		sort.Slice(signatures, func(i, j int) bool {
-			return bytes.Compare(
-				signatures[i].(*iotago.Ed25519Signature).PublicKey[:],
-				signatures[j].(*iotago.Ed25519Signature).PublicKey[:]) < 0
-		})
 		// add the signatures to the milestone
 		c.deliverState.Milestone.Signatures = signatures
 
@@ -238,7 +230,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		state := &State{
 			MilestoneHeight:      c.deliverState.Height,
 			MilestoneIndex:       c.deliverState.MilestoneIndex + 1,
-			LastMilestoneID:      MilestoneID(c.deliverState.Milestone),
+			LastMilestoneID:      c.deliverState.Milestone.MustID(),
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
 		c.deliverState.Reset(c.deliverState.Height, state)
@@ -277,7 +269,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(&ms).Build()
+	msg, err := buildMilestoneBlock(&ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
@@ -294,18 +286,13 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	return nil
 }
 
-// MilestoneID returns the block ID of the given milestone.
-func MilestoneID(ms *iotago.Milestone) iotago.MilestoneID {
-	id, err := ms.ID()
-	if err != nil {
-		panic(err)
-	}
-	return id
+func buildMilestoneBlock(ms *iotago.Milestone) (*iotago.Block, error) {
+	return builder.NewBlockBuilder().ProtocolVersion(ms.ProtocolVersion).Parents(ms.Parents).Payload(ms).Build()
 }
 
 // MilestoneBlockID returns the block ID of the given milestone.
 func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
-	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(ms).Build()
+	msg, err := buildMilestoneBlock(ms)
 	if err != nil {
 		panic(err)
 	}

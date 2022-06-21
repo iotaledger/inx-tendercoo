@@ -3,19 +3,18 @@ package decoo
 import (
 	"context"
 	"crypto"
-	"encoding"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/iotaledger/hornet/pkg/whiteflag"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/merklehasher"
 )
 
-var merkle = whiteflag.NewHasher(crypto.BLAKE2b_256)
+var merkle = merklehasher.NewHasher(crypto.BLAKE2b_256)
 
 // INXClient is a wrapper around nodebridge.NodeBridge to provide the functionality used by the coordinator.
 type INXClient struct{ *nodebridge.NodeBridge }
@@ -67,7 +66,7 @@ func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byt
 	}
 
 	// extract block IDs from milestone cone
-	var includedBlockIDs, appliedBlockIDs []encoding.BinaryMarshaler
+	var includedBlockIDs, appliedBlockIDs []iotago.BlockID
 	for {
 		payload, err := stream.Recv()
 		if err != nil {
@@ -85,13 +84,5 @@ func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byt
 		}
 	}
 
-	includedMerkleRoot, err := merkle.Hash(includedBlockIDs)
-	if err != nil {
-		panic(err)
-	}
-	appliedMerkleRoot, err := merkle.Hash(appliedBlockIDs)
-	if err != nil {
-		panic(err)
-	}
-	return includedMerkleRoot, appliedMerkleRoot, nil
+	return merkle.HashBlockIDs(includedBlockIDs), merkle.HashBlockIDs(appliedBlockIDs), nil
 }

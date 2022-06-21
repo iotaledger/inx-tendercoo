@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"golang.org/x/crypto/blake2b"
 )
@@ -21,18 +20,18 @@ type AppState struct {
 	// State contains the coordinator state.
 	State
 
-	// ParentByIssuer contains the proposed parent IDs sorted by the proposers PublicKey.
-	ParentByIssuer map[types.Byte32]iotago.BlockID
-	// IssuerCountByParent counts the issuers of each parent
-	IssuerCountByParent map[types.Byte32]int
+	// ParentByIssuer contains the proposed block IDs sorted by the proposer's public key.
+	ParentByIssuer map[PeerID]iotago.BlockID
+	// IssuerCountByParent counts the issuers of each parent.
+	IssuerCountByParent map[iotago.BlockID]int
 
-	// ProofsByBlockID contains the received proofs sorted by Proof.ParentId and Proof.PublicKey.
-	ProofsByBlockID map[types.Byte32]map[types.Byte32]struct{}
+	// ProofIssuersByBlockID contains the public key of each proof sorted by its block ID.
+	ProofIssuersByBlockID map[iotago.BlockID]map[PeerID]struct{}
 
 	// Milestone contains the constructed Milestone, or nil if we are still collecting proofs.
 	Milestone *iotago.Milestone
-	// SignaturesByIssuer contains the received Signature sorted by Signature.PublicKey.
-	SignaturesByIssuer map[types.Byte32]*iotago.Ed25519Signature
+	// SignaturesByIssuer contains the milestone signatures sorted by the signer's public key.
+	SignaturesByIssuer map[PeerID]*iotago.Ed25519Signature
 }
 
 // MarshalBinary provides deterministic marshalling of the state.
@@ -45,11 +44,11 @@ func (a *AppState) UnmarshalBinary(data []byte) error { return json.Unmarshal(da
 func (a *AppState) Reset(height int64, state *State) {
 	a.Height = height
 	a.State = *state
-	a.ParentByIssuer = map[types.Byte32]iotago.BlockID{}
-	a.IssuerCountByParent = map[types.Byte32]int{}
-	a.ProofsByBlockID = map[types.Byte32]map[types.Byte32]struct{}{}
+	a.ParentByIssuer = map[PeerID]iotago.BlockID{}
+	a.IssuerCountByParent = map[iotago.BlockID]int{}
+	a.ProofIssuersByBlockID = map[iotago.BlockID]map[PeerID]struct{}{}
 	a.Milestone = nil
-	a.SignaturesByIssuer = map[types.Byte32]*iotago.Ed25519Signature{}
+	a.SignaturesByIssuer = map[PeerID]*iotago.Ed25519Signature{}
 }
 
 // Copy sets the AppState to a deep copy of o.

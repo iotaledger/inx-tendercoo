@@ -14,25 +14,24 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 )
 
-// ID is a simple peer ID.
-type ID = types.Byte32
+// PeerID is a simple peer ID.
+type PeerID = types.Byte32
 
 // Committee defines a committee of signers.
 type Committee struct {
 	privateKey ed25519.PrivateKey
-	idSet      map[ID]struct{}
+	idSet      map[PeerID]struct{}
 }
 
 // IDFromPublicKey returns the ID from a given public key.
-func IDFromPublicKey(publicKey ed25519.PublicKey) (id ID) {
-	copy(id[:], publicKey)
-	return id
+func IDFromPublicKey(publicKey ed25519.PublicKey) PeerID {
+	return types.Byte32FromSlice(publicKey)
 }
 
 // NewCommittee creates a new committee.
 // The given private key must belong to one member.
 func NewCommittee(privateKey ed25519.PrivateKey, members ...ed25519.PublicKey) *Committee {
-	ids := make(map[ID]struct{}, len(members))
+	ids := make(map[PeerID]struct{}, len(members))
 	for _, member := range members {
 		id := IDFromPublicKey(member)
 		if _, has := ids[id]; has {
@@ -60,7 +59,7 @@ func (v *Committee) PublicKey() ed25519.PublicKey {
 }
 
 // ID returns the ID of the local member.
-func (v *Committee) ID() ID {
+func (v *Committee) ID() PeerID {
 	return IDFromPublicKey(v.PublicKey())
 }
 

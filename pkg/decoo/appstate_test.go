@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/tpkg"
 	"github.com/stretchr/testify/require"
@@ -83,20 +82,20 @@ func randState() *decoo.AppState {
 			LastMilestoneID:      tpkg.Rand32ByteArray(),
 			LastMilestoneBlockID: tpkg.Rand32ByteArray(),
 		},
-		ParentByIssuer: map[types.Byte32]iotago.BlockID{
+		ParentByIssuer: map[decoo.PeerID]iotago.BlockID{
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 			tpkg.Rand32ByteArray(): tpkg.Rand32ByteArray(),
 		},
-		IssuerCountByParent: map[types.Byte32]int{
+		IssuerCountByParent: map[iotago.BlockID]int{
 			tpkg.Rand32ByteArray(): rand.Int(),
 			tpkg.Rand32ByteArray(): rand.Int(),
 		},
-		ProofsByBlockID: map[types.Byte32]map[types.Byte32]void{
+		ProofIssuersByBlockID: map[iotago.BlockID]map[decoo.PeerID]void{
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 			tpkg.Rand32ByteArray(): {tpkg.Rand32ByteArray(): void{}, tpkg.Rand32ByteArray(): void{}},
 		},
 		Milestone: tpkg.RandMilestone(nil),
-		SignaturesByIssuer: map[types.Byte32]*iotago.Ed25519Signature{
+		SignaturesByIssuer: map[decoo.PeerID]*iotago.Ed25519Signature{
 			tpkg.Rand32ByteArray(): tpkg.RandEd25519Signature(),
 			tpkg.Rand32ByteArray(): tpkg.RandEd25519Signature(),
 		},

@@ -42,14 +42,14 @@ func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 		return ErrInvalidState
 	}
 	// there must be at most one parent per issuer
-	issuerKey := types.Byte32FromSlice(issuer)
-	if _, has := state.ParentByIssuer[issuerKey]; has {
+	issuerID := IDFromPublicKey(issuer)
+	if _, has := state.ParentByIssuer[issuerID]; has {
 		return ErrReplayed
 	}
 
 	// add the parent to the state
-	state.ParentByIssuer[issuerKey] = p.BlockID
-	state.IssuerCountByParent[types.Byte32(p.BlockID)]++
+	state.ParentByIssuer[issuerID] = p.BlockID
+	state.IssuerCountByParent[p.BlockID]++
 	return nil
 }
 
@@ -69,21 +69,22 @@ func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 		return ErrInvalidState
 	}
 	// the referenced block must be a parent
-	if state.IssuerCountByParent[types.Byte32(p.Parent)] < 1 {
+	if state.IssuerCountByParent[p.Parent] < 1 {
 		return ErrInvalidState
 	}
 	// check that the same proof was not issued already
-	proofs := state.ProofsByBlockID[types.Byte32(p.Parent)]
+	issuerID := IDFromPublicKey(issuer)
+	proofs := state.ProofIssuersByBlockID[p.Parent]
 	if proofs == nil {
-		proofs = map[types.Byte32]struct{}{}
-		state.ProofsByBlockID[types.Byte32(p.Parent)] = proofs
+		proofs = map[PeerID]struct{}{}
+		state.ProofIssuersByBlockID[p.Parent] = proofs
 	}
-	if _, has := proofs[types.Byte32FromSlice(issuer)]; has {
+	if _, has := proofs[issuerID]; has {
 		return ErrReplayed
 	}
 
 	// add the proof to the state
-	proofs[types.Byte32FromSlice(issuer)] = struct{}{}
+	proofs[issuerID] = struct{}{}
 	return nil
 }
 
@@ -115,7 +116,7 @@ func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) erro
 	copy(sig.Signature[:], p.Signature)
 
 	// add the partial signature to the state
-	state.SignaturesByIssuer[types.Byte32FromSlice(issuer)] = sig
+	state.SignaturesByIssuer[IDFromPublicKey(issuer)] = sig
 	return nil
 }
 
