@@ -6,12 +6,11 @@ require (
 	github.com/bits-and-blooms/bitset v1.2.2
 	github.com/iotaledger/hive.go v0.0.0-20220531132324-8347a155e220
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220531132324-8347a155e220
-	github.com/iotaledger/hornet v1.1.0-rc1.0.20220530165211-a0805cb7cbe0
-	github.com/iotaledger/inx-app v0.0.0-20220616153354-1698415db91c
+	github.com/iotaledger/inx-app v0.0.0-20220621112154-a10fe25839ed
 	github.com/iotaledger/inx/go v0.0.0-20220615123503-f64096762c65
-	github.com/iotaledger/iota.go/v3 v3.0.0-20220616082804-f993b18e4ecf
+	github.com/iotaledger/iota.go/v3 v3.0.0-20220621104034-d2f8a5e6287e
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.2
+	github.com/stretchr/testify v1.7.4
 	github.com/tendermint/tendermint v0.35.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/dig v1.14.1
@@ -41,7 +40,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/glog v1.0.0 // indirect
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.0 // indirect
@@ -55,16 +54,15 @@ require (
 	github.com/hashicorp/go-version v1.5.0 // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/klauspost/compress v1.15.5 // indirect
+	github.com/klauspost/compress v1.15.4 // indirect
 	github.com/knadh/koanf v1.4.2-0.20220512043835-4112a7258008 // indirect
 	github.com/lib/pq v1.10.6 // indirect
 	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
-	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20210609091139-0a56a4bca00b // indirect
 	github.com/pasztorpisti/qs v0.0.0-20171216220353-8d6c33ee906c // indirect
 	github.com/pelletier/go-toml/v2 v2.0.2 // indirect
@@ -85,9 +83,8 @@ require (
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
 	github.com/tendermint/tm-db v0.6.6 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
-	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/net v0.0.0-20220615171555-694bf12d69de // indirect
+	golang.org/x/net v0.0.0-20220617184016-355a448f1bc9 // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/sys v0.0.0-20220615213510-4f61da869c0c // indirect
 	golang.org/x/text v0.3.7 // indirect
