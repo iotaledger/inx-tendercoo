@@ -269,7 +269,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(&ms).Build()
+	msg, err := buildMilestoneBlock(&ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
@@ -286,9 +286,13 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	return nil
 }
 
+func buildMilestoneBlock(ms *iotago.Milestone) (*iotago.Block, error) {
+	return builder.NewBlockBuilder().ProtocolVersion(ms.ProtocolVersion).Parents(ms.Parents).Payload(ms).Build()
+}
+
 // MilestoneBlockID returns the block ID of the given milestone.
 func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
-	msg, err := builder.NewBlockBuilder(ms.ProtocolVersion).ParentsBlockIDs(ms.Parents).Payload(ms).Build()
+	msg, err := buildMilestoneBlock(ms)
 	if err != nil {
 		panic(err)
 	}
