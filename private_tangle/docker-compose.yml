@@ -29,7 +29,6 @@ services:
     ports:
       - "14265:14265/tcp"
       - "15600:15600/tcp"
-      - "8081:8081/tcp"
       - "9311:9311/tcp"
     cap_drop:
       - ALL
@@ -45,6 +44,25 @@ services:
       - "--p2p.identityPrivateKey=1f46fad4f538a031d4f87f490f6bca4319dfd0307636a5759a22b5e8874bd608f9156ba976a12918c16a481c38c88a7b5351b769adc30390e93b6c0a63b09b79"
       - "--p2p.peers=/ip4/172.18.211.12/tcp/15600/p2p/12D3KooWCKwcTWevoRKa2kEBputeGASvEBuDfRDSbe8t1DWugUmL,/ip4/172.18.211.13/tcp/15600/p2p/12D3KooWGdr8M5KX8KuKaXSiKfHJstdVnRkadYmupF7tFk2HrRoA,/ip4/172.18.211.14/tcp/15600/p2p/12D3KooWC7uE9w3RN4Vh1FJAZa8SbE8yMWR6wCVBajcWpyWguV73"
       - "--p2p.peerAliases=coo-2,coo-3,coo-4"
+    profiles:
+      - bootstrap
+      - run
+
+  inx-dashboard-1:
+    image: iotaledger/inx-dashboard:0.2
+    networks:
+      peering_net:
+        ipv4_address: 172.18.211.51
+    ports:
+      - "8081:8081/tcp"
+    volumes:
+      - ./config_dashboard.json:/app/config.json:ro
+    command:
+      - "-c"
+      - "config.json"
+      - "--inx.address=172.18.211.11:9029"
+      - "--dashboard.bindAddress=172.18.211.51:8081"
+      - "--dashboard.auth.identityPrivateKey=1f46fad4f538a031d4f87f490f6bca4319dfd0307636a5759a22b5e8874bd608f9156ba976a12918c16a481c38c88a7b5351b769adc30390e93b6c0a63b09b79"
     profiles:
       - bootstrap
       - run
@@ -104,7 +122,6 @@ services:
     ports:
       - "14266:14265/tcp"
       - "15601:15600/tcp"
-      - "8082:8081/tcp"
       - "9312:9311/tcp"
     cap_drop:
       - ALL
@@ -179,7 +196,6 @@ services:
     ports:
       - "14267:14265/tcp"
       - "15602:15600/tcp"
-      - "8083:8081/tcp"
       - "9313:9311/tcp"
     cap_drop:
       - ALL
@@ -254,7 +270,6 @@ services:
     ports:
       - "14268:14265/tcp"
       - "15603:15600/tcp"
-      - "8084:8081/tcp"
       - "9314:9311/tcp"
     cap_drop:
       - ALL
