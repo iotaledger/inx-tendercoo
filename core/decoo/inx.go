@@ -79,7 +79,7 @@ func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byt
 		blockID := payload.UnwrapBlockID()
 		includedBlockIDs = append(includedBlockIDs, blockID)
 		// BlockMetadata_INCLUDED is set when the block contains a transaction that mutates the ledger
-		if payload.GetLedgerInclusionState() == inx.BlockMetadata_INCLUDED {
+		if payload.GetLedgerInclusionState() == inx.BlockMetadata_LEDGER_INCLUSION_STATE_INCLUDED {
 			appliedBlockIDs = append(appliedBlockIDs, blockID)
 		}
 	}
