@@ -134,7 +134,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			}
 
 			// create milestone essence
-			c.deliverState.Milestone = iotago.NewMilestone(c.deliverState.MilestoneIndex, timestamp, c.protoParas.Version, c.deliverState.LastMilestoneID, parents, types.Byte32FromSlice(inclMerkleRoot), types.Byte32FromSlice(appliedMerkleRoot))
+			c.deliverState.Milestone = iotago.NewMilestone(c.deliverState.MilestoneIndex, timestamp, c.protoParamsFunc().Version, c.deliverState.LastMilestoneID, parents, types.Byte32FromSlice(inclMerkleRoot), types.Byte32FromSlice(appliedMerkleRoot))
 			c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
 		}
 	}
@@ -275,7 +275,7 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
-	if _, err := msg.Serialize(serializer.DeSeriModePerformValidation, c.protoParas); err != nil {
+	if _, err := msg.Serialize(serializer.DeSeriModePerformValidation, c.protoParamsFunc()); err != nil {
 		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
