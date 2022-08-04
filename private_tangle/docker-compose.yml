@@ -1,23 +1,24 @@
 version: "3.9"
 services:
   create-snapshots:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.11
     volumes:
+      - ./protocol_parameters.json:/app/protocol_parameters.json:ro
       - ./snapshots:/app/snapshots
     command:
       - "tool"
       - "snap-gen"
-      - "--networkName=private_tangle1"
+      - "--protocolParametersPath=/app/protocol_parameters.json"
       - "--mintAddress=60200bad8137a704216e84f8f9acfe65b972d9f4155becb4815282b03cef99fe"
       - "--outputPath=/app/snapshots/coo-1/full_snapshot.bin"
     profiles:
       - snapshots
 
   coo-1:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.11
@@ -49,7 +50,7 @@ services:
       - run
 
   inx-dashboard-1:
-    image: iotaledger/inx-dashboard:0.2
+    image: iotaledger/inx-dashboard:1.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.51
@@ -110,7 +111,7 @@ services:
       - run
 
   coo-2:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.12
@@ -184,7 +185,7 @@ services:
       - run
 
   coo-3:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.13
@@ -258,7 +259,7 @@ services:
       - run
 
   coo-4:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.14
@@ -332,7 +333,7 @@ services:
       - run
 
   hornet-1:
-    image: iotaledger/hornet:dev
+    image: iotaledger/hornet:2.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.31
@@ -359,7 +360,7 @@ services:
       - run
 
   inx-spammer:
-    image: iotaledger/inx-spammer:0.2
+    image: iotaledger/inx-spammer:1.0.0-beta.3
     networks:
       peering_net:
         ipv4_address: 172.18.211.41
