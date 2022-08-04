@@ -13,4 +13,13 @@ Then, additional bootstrap parameters can be set used additional command line fl
 ## Config
 
 - Environment variables:
-    - `COO_PRV_KEY` specifies the Ed25519 private key (according to [RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032), i.e. any 32-byte string) for the current validator in hex-encoding. This private key is used to sign the produced milestones.
+  - `COO_PRV_KEY` specifies the Ed25519 private key (according to [RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032), i.e. any 32-byte string) for the current validator in hex-encoding. This private key is used to sign the produced milestones.
+- Config file:
+  - `tendermint.root` specifies the root folder for Tendermint to store its config and keep its database.
+  - `tendermint.logLevel` specifies the logging level of the Tendermint Core in ASCII. It cannot be lower than the global log level (e.g. a Tendermint log level of `DEBUG` does not add more verbosity when the global level is `INFO`).
+  - `tendermint.genesisTime` specifies the time the Tendermint blockchain started or will start in Unix time using seconds. If validators are started before this time, they will sit idle until the time specified.
+  - `tendermint.chainID` specifies the identifier of the Tendermint blockchain. Every chain must have a unique ID. The ChainID must be less than 50 characters.
+  - For each validator with `$NAME`:
+    - `tendermint.validators.$NAME.pubKey` specifies the consensus key of the validator.
+    - `tendermint.validators.$NAME.power` specifies the voting power of the validator.
+    - `tendermint.validators.$NAME.address` specifies the IP address and port of the validator.

@@ -22,12 +22,14 @@ import (
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	flag "github.com/spf13/pflag"
-	abciclient "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/config"
 	tmservice "github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
+	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
+	"github.com/tendermint/tendermint/proxy"
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
+	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
 )
@@ -170,8 +172,22 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("invalid level: %w", err)
 		}
+
+		pval := privval.LoadOrGenFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
+		nodeKey, err := p2p.LoadOrGenNodeKey(conf.NodeKeyFile())
+		if err != nil {
+			return nil, fmt.Errorf("failed to load or gen node key %s: %w", conf.NodeKeyFile(), err)
+		}
+
 		// this replays blocks until Tendermint and Coordinator are synced
-		return tmnode.New(conf, NewTenderLogger(log, lvl), abciclient.NewLocalCreator(deps.Coordinator), gen)
+		return tmnode.NewNode(conf,
+			pval,
+			nodeKey,
+			proxy.NewLocalClientCreator(deps.Coordinator),
+			func() (*tmtypes.GenesisDoc, error) { return gen, nil },
+			tmnode.DefaultDBProvider,
+			tmnode.DefaultMetricsProvider(conf.Instrumentation),
+			NewTenderLogger(log, lvl))
 	}); err != nil {
 		return err
 	}
@@ -194,7 +210,7 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		return nil
 	}
 
-	pv, _ := privval.LoadFilePV(conf.PrivValidator.KeyFile(), conf.PrivValidator.StateFile())
+	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
 	tendermintHeight := pv.LastSignState.Height
 
 	// start from the latest confirmed milestone as the node should contain its previous milestones
@@ -299,10 +315,7 @@ func run() error {
 		attachEvents()
 		defer detachEvents()
 
-		rpc, err := rpclocal.New(deps.TendermintNode.(rpclocal.NodeService))
-		if err != nil {
-			CoreComponent.LogPanicf("invalid Tendermint node: %s", err)
-		}
+		rpc := rpclocal.New(deps.TendermintNode.(*tmnode.Node))
 		if err := deps.Coordinator.Start(rpc); err != nil {
 			CoreComponent.LogPanicf("failed to start: %s", err)
 		}

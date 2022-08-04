@@ -12,7 +12,7 @@ import (
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
-	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
+	tmcore "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/atomic"
 )
