@@ -6,8 +6,8 @@ require (
 	github.com/bits-and-blooms/bitset v1.3.0
 	github.com/iotaledger/hive.go v0.0.0-20220714075325-11202fe498d6
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-20220714075325-11202fe498d6
-	github.com/iotaledger/inx-app v1.0.0-beta.4
-	github.com/iotaledger/inx/go v1.0.0-beta.3
+	github.com/iotaledger/inx-app v1.0.0-beta.6
+	github.com/iotaledger/inx/go v1.0.0-beta.4
 	github.com/iotaledger/iota.go/v3 v3.0.0-beta.4
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
@@ -85,12 +85,12 @@ require (
 	github.com/tendermint/tm-db v0.6.6 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/net v0.0.0-20220728211354-c7608f3a8462 // indirect
+	golang.org/x/net v0.0.0-20220802222814-0bcc04d9c69b // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.0.0-20220731174439-a90be440212d // indirect
+	golang.org/x/sys v0.0.0-20220803195053-6e608f9ce704 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
-	google.golang.org/genproto v0.0.0-20220801145646-83ce21fca29f // indirect
+	google.golang.org/genproto v0.0.0-20220803205849-8f55acc8769f // indirect
 	google.golang.org/grpc v1.48.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
