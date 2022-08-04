@@ -4,11 +4,21 @@ This repository contains an [INX](https://github.com/iotaledger/inx) plugin for 
 
 ## Bootstrapping
 
-In order to bootstrap a network without any previous INX-TenderCoo milestones, the `cooBootstrap` command line flag needs to be set.
+In order to bootstrap a network without any previous INX-TenderCoo milestones, the `--cooBootstrap` command line flag needs to be set.
 Then, additional bootstrap parameters can be set used additional command line flags:
 - `--cooStartIndex uint32` specifies the `Index Number` of the first issued milestone.
 - `--cooStartMilestoneID byte32Hex` specifies the `Previous Milestone ID` of the first issued milestone in hex-encoding. According to TIP-29 this can only be all zero, if `Index Number` equals the `First Milestone Index` protocol parameter. Otherwise, it must reference the previous milestone.
 - `--cooStartMilestoneBlockID byte32Hex` specifies the _Block ID_ of a block containing the milestone with ID matching `Previous Milestone ID`. If `Index Number` equals `First Milestone Index`, this can be all zero. Otherwise, it must reference the previous milestone.
+
+If the `--cooBootstrap` flag is set, but the latest milestone of the connected node was issued by INX-TenderCoo validators, the plugin will crash as this is a restart and not bootstrapping.
+
+## Restart
+
+Once bootstrapped, each issued milestone contains its state in the `Metadata` field and the Tendermint blockchain contains all information needed to recreate previous milestones.
+
+When the INX-TenderCoo plugin (and thus Tendermint) is restarted after a stop, it will query the node for the milestone matching the latest milestone present in its blockchain. As long as this milestone is still available (not pruned), the plugin can reconstruct its local state at that time. After this, replayed Tendermint blocks by other validators will eventually lead to a consistent state among all validators.
+
+This means that, as long as the pruning interval of the connected node is longer than the maximum downtime INX-TenderCoo plugin, it can always be restarted without issues.
 
 ## Config
 
