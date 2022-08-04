@@ -13,7 +13,7 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/stretchr/testify/require"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
-	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
+	tmcore "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 )
 

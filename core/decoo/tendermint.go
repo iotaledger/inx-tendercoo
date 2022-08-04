@@ -12,6 +12,7 @@ import (
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
 	tendermintlog "github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/zap"
@@ -61,17 +62,14 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 
 	rootDir := Parameters.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
-	conf := tmconfig.DefaultValidatorConfig().SetRoot(rootDir)
+	conf := tmconfig.DefaultConfig().SetRoot(rootDir)
 	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.CreateEmptyBlocks
 
 	// private validator
-	privValKeyFile := conf.PrivValidator.KeyFile()
-	privValStateFile := conf.PrivValidator.StateFile()
+	privValKeyFile := conf.PrivValidatorKeyFile()
+	privValStateFile := conf.PrivValidatorStateFile()
 	if fileExists(privValKeyFile) && fileExists(privValStateFile) {
-		if _, err := privval.LoadFilePV(privValKeyFile, privValStateFile); err != nil {
-			return nil, nil, fmt.Errorf("invalid private validator: %w", err)
-		}
-
+		_ = privval.LoadFilePV(privValKeyFile, privValStateFile)
 		log.Infow("Found private validator", "keyFile", privValKeyFile,
 			"stateFile", privValStateFile)
 	} else {
@@ -83,17 +81,14 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 
 	nodeKeyFile := conf.NodeKeyFile()
 	if fileExists(nodeKeyFile) {
-		if _, err := tmtypes.LoadNodeKey(nodeKeyFile); err != nil {
+		if _, err := p2p.LoadNodeKey(nodeKeyFile); err != nil {
 			return nil, nil, fmt.Errorf("invalid node key: %w", err)
 		}
 
 		log.Infow("Found node key", "path", nodeKeyFile)
 	} else {
 		// TODO: should the Tendermint node key (message authentication) be different from our signing key
-		nodeKey := tmtypes.NodeKey{
-			ID:      tmtypes.NodeIDFromPubKey(privKey.PubKey()),
-			PrivKey: privKey,
-		}
+		nodeKey := p2p.NodeKey{PrivKey: privKey}
 		if err := nodeKey.SaveAs(nodeKeyFile); err != nil {
 			return nil, nil, fmt.Errorf("failed to save key file: %w", err)
 		}
@@ -116,8 +111,8 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 			Name:   name,
 		})
 		if !ownPubKey.Equals(pubKey) {
-			nodeID := tmtypes.NodeIDFromPubKey(pubKey)
-			peers = append(peers, nodeID.AddressString(validator.Address))
+			nodeID := p2p.PubKeyToID(pubKey)
+			peers = append(peers, p2p.IDAddressString(nodeID, validator.Address))
 		}
 	}
 
