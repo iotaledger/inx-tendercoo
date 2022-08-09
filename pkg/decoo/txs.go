@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/proto/tendermint"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	iotago "github.com/iotaledger/iota.go/v3"
-	"google.golang.org/protobuf/proto"
 )
 
 var (

@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 )
 
 var errTest = errors.New("test")

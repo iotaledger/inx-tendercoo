@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
 	tendermintlog "github.com/tendermint/tendermint/libs/log"
@@ -17,6 +15,9 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 )
 
 // TenderLogger is a simple wrapper for the Tendermint logger.

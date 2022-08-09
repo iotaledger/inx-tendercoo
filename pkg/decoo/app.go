@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"sort"
 
+	abcitypes "github.com/tendermint/tendermint/abci/types"
+
 	"github.com/iotaledger/hive.go/serializer/v2"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/builder"
-	abcitypes "github.com/tendermint/tendermint/abci/types"
 )
 
 // the coordinator must implement all functions of an ABCI application
