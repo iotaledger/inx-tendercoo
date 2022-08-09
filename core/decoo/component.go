@@ -11,16 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iotaledger/hive.go/app"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/inx-app/nodebridge"
-	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
-	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
-	inx "github.com/iotaledger/inx/go"
-	iotago "github.com/iotaledger/iota.go/v3"
 	flag "github.com/spf13/pflag"
 	"github.com/tendermint/tendermint/config"
 	tmservice "github.com/tendermint/tendermint/libs/service"
@@ -32,6 +22,17 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/iotaledger/hive.go/core/app"
+	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/inx-app/nodebridge"
+	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
+	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
+	inx "github.com/iotaledger/inx/go"
+	iotago "github.com/iotaledger/iota.go/v3"
 )
 
 const (
@@ -406,8 +407,8 @@ func coordinatorLoop(ctx context.Context) {
 }
 
 func attachEvents() {
-	deps.TangleListener.Events.BlockSolid.Attach(onBlockSolid)
-	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Attach(onConfirmedMilestoneChanged)
+	deps.TangleListener.Events.BlockSolid.Hook(onBlockSolid)
+	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Hook(onConfirmedMilestoneChanged)
 }
 
 func detachEvents() {

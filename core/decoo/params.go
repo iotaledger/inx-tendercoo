@@ -3,7 +3,7 @@ package decoo
 import (
 	"time"
 
-	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/hive.go/core/app"
 )
 
 // ParametersDefinition contains the definition of configuration parameters used by the decoo app.

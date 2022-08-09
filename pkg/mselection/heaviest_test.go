@@ -4,10 +4,11 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/iotaledger/inx/go"
+	"github.com/stretchr/testify/assert"
+
+	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/tpkg"
-	"github.com/stretchr/testify/assert"
 )
 
 const (

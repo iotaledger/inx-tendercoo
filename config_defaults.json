@@ -1,0 +1,30 @@
+{
+  "app": {
+    "checkForUpdates": true,
+    "stopGracePeriod": "5m"
+  },
+  "inx": {
+    "address": "localhost:9029"
+  },
+  "coordinator": {
+    "interval": "5s",
+    "maxTrackedBlocks": 10000,
+    "tipsel": {
+      "maxTips": 7,
+      "reducedConfirmationLimit": 0.5,
+      "timeout": "100ms"
+    },
+    "tendermint": {
+      "root": "tendermint",
+      "logLevel": "info",
+      "createEmptyBlocks": false,
+      "genesisTime": 0,
+      "chainID": "tendercoo",
+      "validators": null
+    }
+  },
+  "profiling": {
+    "enabled": false,
+    "bindAddress": "localhost:6060"
+  }
+}
