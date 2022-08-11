@@ -15,11 +15,21 @@
       "timeout": "100ms"
     },
     "tendermint": {
+      "bindAddress": "0.0.0.0:26656",
       "root": "tendermint",
       "logLevel": "info",
-      "createEmptyBlocks": false,
       "genesisTime": 0,
       "chainID": "tendercoo",
+      "consensus": {
+        "createEmptyBlocks": false,
+        "createEmptyBlocksInterval": "0s",
+        "blockInterval": "1s",
+        "skipBlockTimeout": false
+      },
+      "prometheus": {
+        "enabled": false,
+        "bindAddress": "localhost:26660"
+      },
       "validators": null
     }
   },
