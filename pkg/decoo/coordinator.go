@@ -113,10 +113,16 @@ func (c *Coordinator) Bootstrap(index uint32, milestoneID iotago.MilestoneID, mi
 		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
 	}
 
-	// assure that we do not re-bootstrap a network
+	// assure that we do not re-bootstrap the network
 	if latest != nil {
-		if _, err := NewStateFromMilestone(latest); err == nil {
-			return fmt.Errorf("milestone %d contains a valid state", latest.Index)
+		if latest.Index != index-1 {
+			return fmt.Errorf("latest milestone %d is incompatible: Index=%d", latest.Index, latest.Index)
+		}
+		if id := latest.MustID(); id != milestoneID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID=%s", latest.Index, id)
+		}
+		if id := MilestoneBlockID(latest); id != milestoneBlockID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID=%s", latest.Index, id)
 		}
 	}
 
