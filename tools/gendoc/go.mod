@@ -1,13 +1,13 @@
 module github.com/iotaledger/inx-tendercoo/tools/gendoc
 
-go 1.19
+go 1.18
 
 replace github.com/iotaledger/inx-tendercoo => ../../
 
 require (
-	github.com/iotaledger/hive.go/apputils v1.0.0-beta.1
+	github.com/iotaledger/hive.go/apputils v1.0.0-beta.2
 	github.com/iotaledger/hive.go/core v1.0.0-beta.2
-	github.com/iotaledger/inx-tendercoo v1.0.0-00010101000000-000000000000
+	github.com/iotaledger/inx-tendercoo v0.0.0
 )
 
 require (
@@ -53,7 +53,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-beta.1 // indirect
-	github.com/iotaledger/inx-app v1.0.0-beta.7 // indirect
+	github.com/iotaledger/inx-app v1.0.0-beta.9 // indirect
 	github.com/iotaledger/inx/go v1.0.0-beta.5 // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect
 	github.com/iotaledger/iota.go/v3 v3.0.0-beta.6 // indirect
