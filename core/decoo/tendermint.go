@@ -64,7 +64,13 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	rootDir := Parameters.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
 	conf := tmconfig.DefaultConfig().SetRoot(rootDir)
-	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.CreateEmptyBlocks
+	conf.P2P.ListenAddress = "tcp://" + Parameters.Tendermint.BindAddress
+
+	// consensus parameters
+	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.Consensus.CreateEmptyBlocks
+	conf.Consensus.CreateEmptyBlocksInterval = Parameters.Tendermint.Consensus.CreateEmptyBlocksInterval
+	conf.Consensus.TimeoutCommit = Parameters.Tendermint.Consensus.BlockInterval
+	conf.Consensus.SkipTimeoutCommit = Parameters.Tendermint.Consensus.SkipBlockTimeout
 
 	// private validator
 	privValKeyFile := conf.PrivValidatorKeyFile()
@@ -118,6 +124,15 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	}
 
 	conf.P2P.PersistentPeers = strings.Join(peers, ",")
+	// Forcing the max number of connections to be equal to the configured persistent peers (e.g., the entire committee)
+	conf.P2P.MaxNumInboundPeers = len(peers)
+	conf.P2P.MaxNumOutboundPeers = len(peers)
+	// Disable Peer Exchange Reactor
+	conf.P2P.PexReactor = false
+
+	// Prometheus configuration
+	conf.Instrumentation.Prometheus = Parameters.Tendermint.Prometheus.Enabled
+	conf.Instrumentation.PrometheusListenAddr = Parameters.Tendermint.Prometheus.BindAddress
 
 	gen := &tmtypes.GenesisDoc{
 		GenesisTime:   time.Unix(Parameters.Tendermint.GenesisTime, 0),

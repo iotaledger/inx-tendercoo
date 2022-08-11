@@ -1,6 +1,7 @@
 {
   "coordinator": {
     "tendermint": {
+      "bindAddress": "0.0.0.0:26656",
       "logLevel": "info",
       "validators": {
         "coo-1": {
@@ -23,6 +24,16 @@
           "power": 1,
           "address": "172.18.211.24:26656"
         }
+      },
+      "consensus": {
+        "CreateEmptyBlocks": "true",
+			  "CreateEmptyBlocksInterval": "0s",
+			  "BlockInterval": "1s",
+			  "SkipBlockTimeout": false
+      },
+      "prometheus": {
+        "enabled": true,
+        "bindAddress": "localhost:26660"
       }
     }
   },

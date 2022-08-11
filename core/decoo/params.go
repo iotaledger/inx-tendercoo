@@ -16,12 +16,24 @@ type ParametersDefinition struct {
 		Timeout                  time.Duration `default:"100ms" usage:"timeout after which tip selection is cancelled"`
 	} `name:"tipsel"`
 	Tendermint struct {
-		Root              string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
-		LogLevel          string                      `default:"info" usage:"root directory for all Tendermint data"`
-		CreateEmptyBlocks bool                        `default:"false" usage:"root directory for all Tendermint data"`
-		GenesisTime       int64                       `default:"0" usage:"genesis time of the Tendermint blockchain in Unix time"`
-		ChainID           string                      `default:"tendercoo" usage:"human-readable ID of the Tendermint blockchain"`
-		Validators        map[string]ValidatorsConfig `noflag:"true" usage:"defines the Tendermint validators"`
+		BindAddress string                      `default:"0.0.0.0:26656" usage:"binding address to listen for incoming connections"`
+		Root        string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
+		LogLevel    string                      `default:"info" usage:"root directory for all Tendermint data"`
+		GenesisTime int64                       `default:"0" usage:"genesis time of the Tendermint blockchain in Unix time"`
+		ChainID     string                      `default:"tendercoo" usage:"human-readable ID of the Tendermint blockchain"`
+		Validators  map[string]ValidatorsConfig `noflag:"true" usage:"defines the Tendermint validators"`
+
+		Consensus struct {
+			CreateEmptyBlocks         bool          `default:"false" usage:"EmptyBlocks mode"`
+			CreateEmptyBlocksInterval time.Duration `default:"0s" usage:"possible interval between empty blocks"`
+			BlockInterval             time.Duration `default:"1s" usage:"how long we wait after committing a block, before starting on the new height"`
+			SkipBlockTimeout          bool          `default:"false" usage:"make progress as soon as we have all the precommits"`
+		}
+
+		Prometheus struct {
+			Enabled     bool   `default:"false" usage:"toggle for Prometheus metrics collection"`
+			BindAddress string `default:"localhost:26660" usage:"Prometheus listening address binding"`
+		}
 	}
 }
 
