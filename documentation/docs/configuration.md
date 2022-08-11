@@ -82,14 +82,32 @@ Example:
 
 ### <a id="coordinator_tendermint"></a> Tendermint
 
-| Name              | Description                                            | Type    | Default value     |
-| ----------------- | ------------------------------------------------------ | ------- | ----------------- |
-| root              | Root directory for all Tendermint data                 | string  | "tendermint"      |
-| logLevel          | Root directory for all Tendermint data                 | string  | "info"            |
-| createEmptyBlocks | Root directory for all Tendermint data                 | boolean | false             |
-| genesisTime       | Genesis time of the Tendermint blockchain in Unix time | int     | 0                 |
-| chainID           | Human-readable ID of the Tendermint blockchain         | string  | "tendercoo"       |
-| validators        | Defines the Tendermint validators                      | object  | see example below |
+| Name                                             | Description                                            | Type   | Default value     |
+| ------------------------------------------------ | ------------------------------------------------------ | ------ | ----------------- |
+| bindAddress                                      | Binding address to listen for incoming connections     | string | "0.0.0.0:26656"   |
+| root                                             | Root directory for all Tendermint data                 | string | "tendermint"      |
+| logLevel                                         | Root directory for all Tendermint data                 | string | "info"            |
+| genesisTime                                      | Genesis time of the Tendermint blockchain in Unix time | int    | 0                 |
+| chainID                                          | Human-readable ID of the Tendermint blockchain         | string | "tendercoo"       |
+| [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                            | object |                   |
+| [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                           | object |                   |
+| validators                                       | Defines the Tendermint validators                      | object | see example below |
+
+### <a id="coordinator_tendermint_consensus"></a> Consensus
+
+| Name                      | Description                                                                  | Type    | Default value |
+| ------------------------- | ---------------------------------------------------------------------------- | ------- | ------------- |
+| createEmptyBlocks         | EmptyBlocks mode                                                             | boolean | false         |
+| createEmptyBlocksInterval | Possible interval between empty blocks                                       | string  | "0s"          |
+| blockInterval             | How long we wait after committing a block, before starting on the new height | string  | "1s"          |
+| skipBlockTimeout          | Make progress as soon as we have all the precommits                          | boolean | false         |
+
+### <a id="coordinator_tendermint_prometheus"></a> Prometheus
+
+| Name        | Description                              | Type    | Default value     |
+| ----------- | ---------------------------------------- | ------- | ----------------- |
+| enabled     | Toggle for Prometheus metrics collection | boolean | false             |
+| bindAddress | Prometheus listening address binding     | string  | "localhost:26660" |
 
 Example:
 
@@ -104,11 +122,21 @@ Example:
         "timeout": "100ms"
       },
       "tendermint": {
+        "bindAddress": "0.0.0.0:26656",
         "root": "tendermint",
         "logLevel": "info",
-        "createEmptyBlocks": false,
         "genesisTime": 0,
         "chainID": "tendercoo",
+        "consensus": {
+          "createEmptyBlocks": false,
+          "createEmptyBlocksInterval": "0s",
+          "blockInterval": "1s",
+          "skipBlockTimeout": false
+        },
+        "prometheus": {
+          "enabled": false,
+          "bindAddress": "localhost:26660"
+        },
         "validators": null
       }
     }
