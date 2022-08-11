@@ -1,12 +1,12 @@
 module github.com/iotaledger/inx-tendercoo
 
-go 1.19
+go 1.18
 
 require (
 	github.com/bits-and-blooms/bitset v1.3.0
 	github.com/iotaledger/hive.go/core v1.0.0-beta.2
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-beta.1
-	github.com/iotaledger/inx-app v1.0.0-beta.7
+	github.com/iotaledger/inx-app v1.0.0-beta.9
 	github.com/iotaledger/inx/go v1.0.0-beta.5
 	github.com/iotaledger/iota.go/v3 v3.0.0-beta.6
 	github.com/spf13/pflag v1.0.5

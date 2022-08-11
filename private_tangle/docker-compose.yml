@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   create-snapshots:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.11
@@ -18,7 +18,7 @@ services:
       - snapshots
 
   coo-1:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.11
@@ -50,7 +50,7 @@ services:
       - run
 
   inx-dashboard-1:
-    image: iotaledger/inx-dashboard:1.0.0-beta.3
+    image: iotaledger/inx-dashboard:1.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.51
@@ -111,7 +111,7 @@ services:
       - run
 
   coo-2:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.12
@@ -185,7 +185,7 @@ services:
       - run
 
   coo-3:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.13
@@ -259,7 +259,7 @@ services:
       - run
 
   coo-4:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.14
@@ -333,7 +333,7 @@ services:
       - run
 
   hornet-1:
-    image: iotaledger/hornet:2.0.0-beta.3
+    image: iotaledger/hornet:2.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.31
@@ -360,7 +360,7 @@ services:
       - run
 
   inx-spammer:
-    image: iotaledger/inx-spammer:1.0.0-beta.3
+    image: iotaledger/inx-spammer:1.0.0-beta.5
     networks:
       peering_net:
         ipv4_address: 172.18.211.41
