@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/logger"
+	abcitypes "github.com/tendermint/tendermint/abci/types"
+	tmcore "github.com/tendermint/tendermint/rpc/core/types"
+	tmtypes "github.com/tendermint/tendermint/types"
+	"go.uber.org/atomic"
+
+	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
-	abcitypes "github.com/tendermint/tendermint/abci/types"
-	tmcore "github.com/tendermint/tendermint/rpc/coretypes"
-	tmtypes "github.com/tendermint/tendermint/types"
-	"go.uber.org/atomic"
 )
 
 const (
@@ -49,6 +50,9 @@ type ABCIClient interface {
 	BroadcastTxSync(context.Context, tmtypes.Tx) (*tmcore.ResultBroadcastTx, error)
 }
 
+// ProtocolParametersFunc should return the current valid protocol parameters.
+type ProtocolParametersFunc = func() *iotago.ProtocolParameters
+
 // Coordinator is a Tendermint based decentralized coordinator.
 type Coordinator struct {
 	abcitypes.BaseApplication // act as a ABCI application for Tendermint
@@ -60,7 +64,7 @@ type Coordinator struct {
 
 	ctx                          context.Context
 	cancel                       context.CancelFunc
-	protoParas                   *iotago.ProtocolParameters
+	protoParamsFunc              ProtocolParametersFunc
 	stateMilestoneIndexSyncEvent *events.SyncEvent
 	broadcastQueue               *queue.Queue
 
@@ -93,7 +97,7 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 		log:                          log,
 		ctx:                          ctx,
 		cancel:                       cancel,
-		protoParas:                   inxClient.ProtocolParameters(),
+		protoParamsFunc:              inxClient.ProtocolParameters,
 		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
 	}
 	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature

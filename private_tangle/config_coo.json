@@ -2,6 +2,7 @@
   "coordinator": {
     "tendermint": {
       "bindAddress": "0.0.0.0:26656",
+      "logLevel": "info",
       "validators": {
         "coo-1": {
           "pubKey": "6160a605aac652e869283b00b73dbdc8edf88ba4d39af8d318e7e82b19a7537b",
@@ -35,5 +36,8 @@
         "bindAddress": "localhost:26660"
       }
     }
+  },
+  "logger": {
+    "level": "debug"
   }
 }

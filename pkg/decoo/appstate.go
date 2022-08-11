@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	iotago "github.com/iotaledger/iota.go/v3"
 	"golang.org/x/crypto/blake2b"
+
+	iotago "github.com/iotaledger/iota.go/v3"
 )
 
 // AppState holds the global application state.

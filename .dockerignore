@@ -1,5 +1,39 @@
-LICENSE
-README.md
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-private_tangle/snapshots
-private_tangle/privatedb
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# IDE related files
+.vscode/
+
+# Git related files
+.github/
+.git/
+
+# Docker related files
+.dockerignore
+docker-compose.yml
+
+# Documentation
+documentation/
+
+# Scripts + Tools
+scripts/
+tools/
+
+# OSX related files
+.DS_Store
+
+# Executable
+/inx-tendercoo
+
+# Private tangle related files
+private_tangle/
