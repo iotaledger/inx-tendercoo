@@ -47,6 +47,8 @@ const (
 	CfgCoordinatorStartMilestoneID = "cooStartMilestoneID"
 	// CfgCoordinatorStartMilestoneBlockID defines the previous milestone block ID at bootstrap.
 	CfgCoordinatorStartMilestoneBlockID = "cooStartMilestoneBlockID"
+	// CfgCoordinatorBootstrapForce defines whether the network bootstrap is forced, disabling all fail-safes.
+	CfgCoordinatorBootstrapForce = "cooBootstrapForce"
 
 	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
@@ -59,6 +61,7 @@ func init() {
 	flag.Uint32Var(&startIndex, CfgCoordinatorStartIndex, 1, "index of the first milestone at bootstrap")
 	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneID)), CfgCoordinatorStartMilestoneID, "the previous milestone ID at bootstrap")
 	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneBlockID)), CfgCoordinatorStartMilestoneBlockID, "previous milestone block ID at bootstrap")
+	flag.BoolVar(&bootstrapForce, CfgCoordinatorBootstrapForce, false, "whether the network bootstrap is forced")
 
 	CoreComponent = &app.CoreComponent{
 		Component: &app.Component{
@@ -81,6 +84,7 @@ var (
 	startIndex            uint32
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
+	bootstrapForce        bool
 
 	confirmedMilestone struct {
 		sync.Mutex
@@ -205,7 +209,9 @@ func provide(c *dig.Container) error {
 
 func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, conf *config.Config) error {
 	if bootstrap {
-		if err := coordinator.Bootstrap(startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
+		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
+			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
+				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
 			return fmt.Errorf("bootstrap failed: %w", err)
 		}
 		return nil

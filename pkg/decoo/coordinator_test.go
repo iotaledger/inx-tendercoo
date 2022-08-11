@@ -42,7 +42,7 @@ func TestSingleValidator(t *testing.T) {
 		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
-		require.NoError(t, c.Bootstrap(1, [32]byte{}, [32]byte{}))
+		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
 		abci.Application = c
 		require.NoError(t, c.Start(abci))
 

@@ -107,22 +107,11 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 }
 
 // Bootstrap bootstraps the coordinator with the give state.
-func (c *Coordinator) Bootstrap(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	latest, err := c.inxClient.LatestMilestone()
-	if err != nil {
-		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
-	}
-
-	// assure that we do not re-bootstrap the network
-	if latest != nil {
-		if latest.Index != index-1 {
-			return fmt.Errorf("latest milestone %d is incompatible: Index=%d", latest.Index, latest.Index)
-		}
-		if id := latest.MustID(); id != milestoneID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID=%s", latest.Index, id)
-		}
-		if id := MilestoneBlockID(latest); id != milestoneBlockID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID=%s", latest.Index, id)
+func (c *Coordinator) Bootstrap(force bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+	// validate bootstrapping parameters against the latest milestone if not forced
+	if !force {
+		if err := c.validateLatest(index, milestoneID, milestoneBlockID); err != nil {
+			return err
 		}
 	}
 
@@ -200,6 +189,28 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	if res.Code != CodeTypeOK {
 		return fmt.Errorf("invalid proposal: %s", res.Log)
 	}
+	return nil
+}
+
+func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+	latest, err := c.inxClient.LatestMilestone()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
+	}
+
+	// assure that we do not re-bootstrap the network
+	if latest != nil {
+		if latest.Index != index-1 {
+			return fmt.Errorf("latest milestone %d is incompatible: Index=%d", latest.Index, latest.Index)
+		}
+		if id := latest.MustID(); id != milestoneID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID=%s", latest.Index, id)
+		}
+		if id := MilestoneBlockID(latest); id != milestoneBlockID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID=%s", latest.Index, id)
+		}
+	}
+
 	return nil
 }
 

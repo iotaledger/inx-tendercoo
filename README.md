@@ -10,7 +10,8 @@ Then, additional bootstrap parameters can be set used additional command line fl
 - `--cooStartMilestoneID byte32Hex` specifies the `Previous Milestone ID` of the first issued milestone in hex-encoding. According to TIP-29 this can only be all zero, if `Index Number` equals the `First Milestone Index` protocol parameter. Otherwise, it must reference the previous milestone.
 - `--cooStartMilestoneBlockID byte32Hex` specifies the _Block ID_ of a block containing the milestone with ID matching `Previous Milestone ID`. If `Index Number` equals `First Milestone Index`, this can be all zero. Otherwise, it must reference the previous milestone.
 
-If the `--cooBootstrap` flag is set, but the latest milestone of the connected node was issued by INX-TenderCoo validators, the plugin will crash as this is a restart and not bootstrapping.
+The plugin performs some sanity checks whether the given `Index`, `Milestone ID` and `Milestone Block ID` is consistent with the latest milestone (if present) of the connected node.
+It crashes when these checks fail. In an emergency, the bootstrapping fail-safes can be disabled completely by additionally setting the `--cooBootstrapForce` flag.
 
 ## Restart
 
