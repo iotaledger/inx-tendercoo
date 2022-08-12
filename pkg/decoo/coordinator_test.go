@@ -103,6 +103,10 @@ func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
 	return solid, nil
 }
 
+func (m *INXMock) BlockMetadata(iotago.BlockID) (*inxutils.BlockMetadata, error) {
+	panic("not implemented")
+}
+
 func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {
 	require.NotNil(m.t, ctx)
 

@@ -33,6 +33,7 @@ type Parent struct {
 	BlockID iotago.BlockID
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
@@ -60,6 +61,7 @@ type Proof struct {
 	Parent iotago.BlockID
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
@@ -94,6 +96,7 @@ type PartialSignature struct {
 	Signature []byte
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// there must be a milestone essence to sign
 	if state.Milestone == nil {

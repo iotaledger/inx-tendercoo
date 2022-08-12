@@ -272,19 +272,26 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	msg, err := buildMilestoneBlock(&ms)
+	block, err := buildMilestoneBlock(&ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
-	if _, err := msg.Serialize(serializer.DeSeriModePerformValidation, c.protoParamsFunc()); err != nil {
+	if _, err := block.Serialize(serializer.DeSeriModePerformValidation, c.protoParamsFunc()); err != nil {
 		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
-	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, msg)
+	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, block)
 	if err != nil {
-		return fmt.Errorf("emitting the block failed: %w", err)
+		// if SubmitBlock failed, check whether block is still present in the node, submitted by a different validator
+		if _, blockErr := c.inxClient.BlockMetadata(block.MustID()); blockErr != nil {
+			// only report an error, if we couldn't submit, and it is not present
+			return fmt.Errorf("submitting the milestone failed: %w", err)
+		}
+		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
+		// TODO: also report this as a metric
+	} else {
+		c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
 	}
-	c.log.Debugw("milestone issued", "blockID", latestMilestoneBlockID, "payload", msg.Payload)
 
 	return nil
 }
