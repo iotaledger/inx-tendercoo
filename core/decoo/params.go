@@ -13,7 +13,7 @@ type ParametersDefinition struct {
 	TipSel           struct {
 		MaxTips                  int           `default:"7" usage:"maximum amount of tips returned"`
 		ReducedConfirmationLimit float64       `default:"0.5" usage:"only select tips that newly reference more than this limit compared to the best tip"`
-		Timeout                  time.Duration `default:"100ms" usage:"timeout after which tip selection is cancelled"`
+		Timeout                  time.Duration `default:"100ms" usage:"timeout after which tip selection is canceled"`
 	} `name:"tipsel"`
 	Tendermint struct {
 		BindAddress string                      `default:"0.0.0.0:26656" usage:"binding address to listen for incoming connections"`

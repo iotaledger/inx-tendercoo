@@ -394,6 +394,7 @@ func coordinatorLoop(ctx context.Context) {
 			}
 			// reset the timer to match the interval since the lasts milestone
 			timer.Reset(remainingInterval(info.timestamp))
+
 			continue
 
 		case <-ctx.Done(): // end the loop

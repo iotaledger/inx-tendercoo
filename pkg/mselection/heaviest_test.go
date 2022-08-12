@@ -30,6 +30,7 @@ func newHPS() *HeaviestSelector {
 
 func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
 	blockID := tpkg.Rand32ByteArray()
+
 	return &inx.BlockMetadata{
 		BlockId: inx.NewBlockId(blockID),
 		Parents: inx.NewBlockIds(parents),

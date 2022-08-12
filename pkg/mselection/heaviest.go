@@ -25,9 +25,9 @@ type HeaviestSelector struct {
 
 	// maximum amount of tips returned by SelectTips
 	maxTips int
-	// timeout after which SelectTips is cancelled
+	// timeout after which SelectTips is canceled
 	timeout time.Duration
-	// when the fraction of newly referenced blocks compared to the best is below this limit, SelectTips is cancelled
+	// when the fraction of newly referenced blocks compared to the best is below this limit, SelectTips is canceled
 	reducedConfirmationLimit float64
 
 	// map of all tracked blocks
@@ -77,6 +77,7 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 		reducedConfirmationLimit: reducedConfirmationLimit,
 	}
 	s.Reset()
+
 	return s
 }
 
@@ -106,8 +107,9 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 		return len(s.trackedBlocks)
 	}
 
-	var trackedParents []*trackedBlock
-	for _, parent := range meta.UnwrapParents() {
+	parents := meta.UnwrapParents()
+	trackedParents := make([]*trackedBlock, 0, len(parents))
+	for _, parent := range parents {
 		trackedParent := s.trackedBlocks[parent]
 		if trackedParent == nil {
 			continue
@@ -217,6 +219,7 @@ func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 		tip := e.Value.(*trackedBlock)
 		result[tip.blockID] = tip
 	}
+
 	return &trackedBlocksList{blocks: result}
 }
 

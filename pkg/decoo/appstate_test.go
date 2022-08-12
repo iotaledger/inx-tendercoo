@@ -20,7 +20,7 @@ func TestAppState_Encoding(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("%s", b)
 
-	// the unmarshalled state must match the original
+	// the unmarshaled state must match the original
 	s2 := &decoo.AppState{}
 	require.NoError(t, s2.UnmarshalBinary(b))
 	require.Equal(t, s, s2)
