@@ -6,27 +6,29 @@ import (
 	"github.com/iotaledger/hive.go/core/app"
 )
 
-// ParametersDefinition contains the definition of configuration parameters used by the decoo app.
+// ParametersDefinition contains the definition of configuration parameters used by the plugin.
 type ParametersDefinition struct {
-	Interval         time.Duration `default:"5s" usage:"the interval in which milestones are issued"`
+	Interval         time.Duration `default:"5s" usage:"target interval in which milestones are issued"`
 	MaxTrackedBlocks int           `default:"10000" usage:"maximum amount of blocks tracked by the milestone tip selection"`
-	TipSel           struct {
+
+	TipSel struct {
 		MaxTips                  int           `default:"7" usage:"maximum amount of tips returned"`
 		ReducedConfirmationLimit float64       `default:"0.5" usage:"only select tips that newly reference more than this limit compared to the best tip"`
 		Timeout                  time.Duration `default:"100ms" usage:"timeout after which tip selection is canceled"`
 	} `name:"tipsel"`
+
 	Tendermint struct {
-		BindAddress string                      `default:"0.0.0.0:26656" usage:"binding address to listen for incoming connections"`
-		Root        string                      `default:"tendermint" usage:"root directory for all Tendermint data"`
-		LogLevel    string                      `default:"info" usage:"root directory for all Tendermint data"`
-		GenesisTime int64                       `default:"0" usage:"genesis time of the Tendermint blockchain in Unix time"`
-		ChainID     string                      `default:"tendercoo" usage:"human-readable ID of the Tendermint blockchain"`
-		Validators  map[string]ValidatorsConfig `noflag:"true" usage:"defines the Tendermint validators"`
+		BindAddress string                      `default:"0.0.0.0:26656" usage:"bind address for incoming connections"`
+		Root        string                      `default:"tendermint" usage:"root folder to store config and database"`
+		LogLevel    string                      `default:"info" usage:"logging level of the Tendermint Core; cannot be lower than the global level"`
+		GenesisTime int64                       `default:"0" usage:"time the blockchain started or will start in Unix time using seconds"`
+		ChainID     string                      `default:"tendercoo" usage:"identifier of the blockchain; every chain must have a unique ID"`
+		Validators  map[string]ValidatorsConfig `noflag:"true" usage:"set of validators"`
 
 		Consensus struct {
-			CreateEmptyBlocks         bool          `default:"false" usage:"EmptyBlocks mode"`
-			CreateEmptyBlocksInterval time.Duration `default:"0s" usage:"possible interval between empty blocks"`
-			BlockInterval             time.Duration `default:"1s" usage:"how long we wait after committing a block, before starting on the new height"`
+			CreateEmptyBlocks         bool          `default:"false" usage:"whether empty blocks are created"`
+			CreateEmptyBlocksInterval time.Duration `default:"0s" usage:"create empty blocks after waiting this long without receiving anything"`
+			BlockInterval             time.Duration `default:"1s" usage:"delay between blocks"`
 			SkipBlockTimeout          bool          `default:"false" usage:"make progress as soon as we have all the precommits"`
 		}
 
@@ -38,11 +40,10 @@ type ParametersDefinition struct {
 }
 
 // ValidatorsConfig defines the config options for one validator.
-// TODO: what is the best way to define PubKey as a [32]byte
 type ValidatorsConfig struct {
-	PubKey  string
-	Power   int64
-	Address string
+	PubKey  string `usage:"consensus key of the validator"`
+	Power   int64  `usage:"voting power of the validator"`
+	Address string `usage:"IP address and port of the validator"`
 }
 
 // Parameters contains the configuration parameters of the decoo app.

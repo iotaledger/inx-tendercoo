@@ -67,7 +67,7 @@ Example:
 
 | Name                                  | Description                                                     | Type   | Default value |
 | ------------------------------------- | --------------------------------------------------------------- | ------ | ------------- |
-| interval                              | The interval in which milestones are issued                     | string | "5s"          |
+| interval                              | Target interval in which milestones are issued                  | string | "5s"          |
 | maxTrackedBlocks                      | Maximum amount of blocks tracked by the milestone tip selection | int    | 10000         |
 | [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object |               |
 | [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object |               |
@@ -78,29 +78,29 @@ Example:
 | ------------------------ | ----------------------------------------------------------------------------------- | ------ | ------------- |
 | maxTips                  | Maximum amount of tips returned                                                     | int    | 7             |
 | reducedConfirmationLimit | Only select tips that newly reference more than this limit compared to the best tip | float  | 0.5           |
-| timeout                  | Timeout after which tip selection is cancelled                                      | string | "100ms"       |
+| timeout                  | Timeout after which tip selection is canceled                                       | string | "100ms"       |
 
 ### <a id="coordinator_tendermint"></a> Tendermint
 
-| Name                                             | Description                                            | Type   | Default value     |
-| ------------------------------------------------ | ------------------------------------------------------ | ------ | ----------------- |
-| bindAddress                                      | Binding address to listen for incoming connections     | string | "0.0.0.0:26656"   |
-| root                                             | Root directory for all Tendermint data                 | string | "tendermint"      |
-| logLevel                                         | Root directory for all Tendermint data                 | string | "info"            |
-| genesisTime                                      | Genesis time of the Tendermint blockchain in Unix time | int    | 0                 |
-| chainID                                          | Human-readable ID of the Tendermint blockchain         | string | "tendercoo"       |
-| [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                            | object |                   |
-| [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                           | object |                   |
-| validators                                       | Defines the Tendermint validators                      | object | see example below |
+| Name                                             | Description                                                                 | Type   | Default value     |
+| ------------------------------------------------ | --------------------------------------------------------------------------- | ------ | ----------------- |
+| bindAddress                                      | Bind address for incoming connections                                       | string | "0.0.0.0:26656"   |
+| root                                             | Root folder to store config and database                                    | string | "tendermint"      |
+| logLevel                                         | Logging level of the Tendermint Core; cannot be lower than the global level | string | "info"            |
+| genesisTime                                      | Time the blockchain started or will start in Unix time using seconds        | int    | 0                 |
+| chainID                                          | Identifier of the blockchain; every chain must have a unique ID             | string | "tendercoo"       |
+| [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                                                 | object |                   |
+| [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                                                | object |                   |
+| validators                                       | Set of validators                                                           | object | see example below |
 
 ### <a id="coordinator_tendermint_consensus"></a> Consensus
 
-| Name                      | Description                                                                  | Type    | Default value |
-| ------------------------- | ---------------------------------------------------------------------------- | ------- | ------------- |
-| createEmptyBlocks         | EmptyBlocks mode                                                             | boolean | false         |
-| createEmptyBlocksInterval | Possible interval between empty blocks                                       | string  | "0s"          |
-| blockInterval             | How long we wait after committing a block, before starting on the new height | string  | "1s"          |
-| skipBlockTimeout          | Make progress as soon as we have all the precommits                          | boolean | false         |
+| Name                      | Description                                                            | Type    | Default value |
+| ------------------------- | ---------------------------------------------------------------------- | ------- | ------------- |
+| createEmptyBlocks         | Whether empty blocks are created                                       | boolean | false         |
+| createEmptyBlocksInterval | Create empty blocks after waiting this long without receiving anything | string  | "0s"          |
+| blockInterval             | Delay between blocks                                                   | string  | "1s"          |
+| skipBlockTimeout          | Make progress as soon as we have all the precommits                    | boolean | false         |
 
 ### <a id="coordinator_tendermint_prometheus"></a> Prometheus
 

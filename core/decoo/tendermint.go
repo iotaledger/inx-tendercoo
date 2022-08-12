@@ -67,10 +67,10 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	conf.P2P.ListenAddress = "tcp://" + Parameters.Tendermint.BindAddress
 
 	// consensus parameters
-	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.Consensus.CreateEmptyBlocks
-	conf.Consensus.CreateEmptyBlocksInterval = Parameters.Tendermint.Consensus.CreateEmptyBlocksInterval
 	conf.Consensus.TimeoutCommit = Parameters.Tendermint.Consensus.BlockInterval
 	conf.Consensus.SkipTimeoutCommit = Parameters.Tendermint.Consensus.SkipBlockTimeout
+	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.Consensus.CreateEmptyBlocks
+	conf.Consensus.CreateEmptyBlocksInterval = Parameters.Tendermint.Consensus.CreateEmptyBlocksInterval
 
 	// private validator
 	privValKeyFile := conf.PrivValidatorKeyFile()
