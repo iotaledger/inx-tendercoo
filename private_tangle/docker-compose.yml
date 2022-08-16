@@ -27,10 +27,6 @@ services:
         soft: 8192
         hard: 8192
     stop_grace_period: 5m
-    ports:
-      - "14265:14265/tcp"
-      - "15600:15600/tcp"
-      - "9311:9311/tcp"
     cap_drop:
       - ALL
     volumes:
@@ -120,10 +116,6 @@ services:
         soft: 8192
         hard: 8192
     stop_grace_period: 5m
-    ports:
-      - "14266:14265/tcp"
-      - "15601:15600/tcp"
-      - "9312:9311/tcp"
     cap_drop:
       - ALL
     volumes:
@@ -194,10 +186,6 @@ services:
         soft: 8192
         hard: 8192
     stop_grace_period: 5m
-    ports:
-      - "14267:14265/tcp"
-      - "15602:15600/tcp"
-      - "9313:9311/tcp"
     cap_drop:
       - ALL
     volumes:
@@ -268,10 +256,6 @@ services:
         soft: 8192
         hard: 8192
     stop_grace_period: 5m
-    ports:
-      - "14268:14265/tcp"
-      - "15603:15600/tcp"
-      - "9314:9311/tcp"
     cap_drop:
       - ALL
     volumes:
@@ -365,8 +349,6 @@ services:
       peering_net:
         ipv4_address: 172.18.211.41
     restart: on-failure
-    ports:
-      - "9092:9092/tcp"
     volumes:
       - ./config_spammer.json:/app/config.json:ro
     command:

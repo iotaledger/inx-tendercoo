@@ -2,7 +2,20 @@
   "coordinator": {
     "tendermint": {
       "bindAddress": "0.0.0.0:26656",
+      "root": "tendermint",
       "logLevel": "info",
+      "genesisTime": 0,
+      "chainID": "private_tangle1",
+      "consensus": {
+        "createEmptyBlocks": false,
+        "createEmptyBlocksInterval": "0s",
+        "blockInterval": "1s",
+        "skipBlockTimeout": false
+      },
+      "prometheus": {
+        "enabled": false,
+        "bindAddress": "localhost:26660"
+      },
       "validators": {
         "coo-1": {
           "pubKey": "6160a605aac652e869283b00b73dbdc8edf88ba4d39af8d318e7e82b19a7537b",
@@ -24,16 +37,6 @@
           "power": 1,
           "address": "172.18.211.24:26656"
         }
-      },
-      "consensus": {
-        "CreateEmptyBlocks": "true",
-			  "CreateEmptyBlocksInterval": "0s",
-			  "BlockInterval": "1s",
-			  "SkipBlockTimeout": false
-      },
-      "prometheus": {
-        "enabled": true,
-        "bindAddress": "localhost:26660"
       }
     }
   },
