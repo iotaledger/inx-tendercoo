@@ -12,6 +12,9 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
+// MaxTxBytes denotes the maximum size of a marshaled Tendermint transaction.
+const MaxTxBytes = 170
+
 var (
 	// ErrInvalidBlockID is returned when the transaction contains an invalid block ID.
 	ErrInvalidBlockID = errors.New("invalid block ID")
@@ -164,12 +167,12 @@ func MarshalTx(c *Committee, tx Tx) ([]byte, error) {
 }
 
 // UnmarshalTx parses the wire-format message in b and returns the verified issuer as well as the message m.
-func UnmarshalTx(c *Committee, b []byte) (ed25519.PublicKey, Tx, error) {
+func UnmarshalTx(c *Committee, msIndex iotago.MilestoneIndex, b []byte) (ed25519.PublicKey, Tx, error) {
 	txRaw := &tendermint.TxRaw{}
 	if err := proto.Unmarshal(b, txRaw); err != nil {
 		return nil, nil, err
 	}
-	if err := c.VerifySingle(txRaw.GetEssence(), txRaw.GetPublicKey(), txRaw.GetSignature()); err != nil {
+	if err := c.VerifySingle(msIndex, txRaw.GetEssence(), txRaw.GetPublicKey(), txRaw.GetSignature()); err != nil {
 		return nil, nil, err
 	}
 

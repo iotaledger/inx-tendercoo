@@ -33,6 +33,7 @@ import (
 	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/keymanager"
 )
 
 const (
@@ -49,6 +50,11 @@ const (
 	CfgCoordinatorStartMilestoneBlockID = "cooStartMilestoneBlockID"
 	// CfgCoordinatorBootstrapForce defines whether the network bootstrap is forced, disabling all fail-safes.
 	CfgCoordinatorBootstrapForce = "cooBootstrapForce"
+
+	// EnvMilestonePrivateKey defines the name of the environment variable containing the key used for signing milestones.
+	EnvMilestonePrivateKey = "COO_PRV_KEY"
+	// EnvTendermintPrivateKey defines the name of the environment variable containing the Tendermint node and consensus key.
+	EnvTendermintPrivateKey = "COO_PRV_KEY"
 
 	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
@@ -107,14 +113,6 @@ type dependencies struct {
 }
 
 func provide(c *dig.Container) error {
-	// provide the coordinator private key
-	if err := c.Provide(func() (ed25519.PrivateKey, error) {
-		// TODO: is it really safe to provide the private key?
-		return loadEd25519PrivateKeyFromEnvironment("COO_PRV_KEY")
-	}); err != nil {
-		return err
-	}
-
 	// provide the node bridge tangle listener
 	if err := c.Provide(nodebridge.NewTangleListener); err != nil {
 		return err
@@ -123,25 +121,28 @@ func provide(c *dig.Container) error {
 	// provide the coordinator
 	type coordinatorDeps struct {
 		dig.In
-		CoordinatorPrivateKey ed25519.PrivateKey
-		NodeBridge            *nodebridge.NodeBridge
-		TangleListener        *nodebridge.TangleListener
+		NodeBridge     *nodebridge.NodeBridge
+		TangleListener *nodebridge.TangleListener
 	}
 	if err := c.Provide(func(deps coordinatorDeps) (*decoo.Coordinator, error) {
 		CoreComponent.LogInfo("Providing Coordinator ...")
 		defer CoreComponent.LogInfo("Providing Coordinator ... done")
 
-		// extract all validator public keys
-		var members []ed25519.PublicKey
-		for name, validator := range Parameters.Tendermint.Validators {
-			var pubKey types.Byte32
-			if err := pubKey.Set(validator.PubKey); err != nil {
-				return nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
-			}
-			members = append(members, pubKey[:])
+		// load the private key used for singing milestones
+		coordinatorPrivateKey, err := loadEd25519PrivateKeyFromEnvironment(EnvMilestonePrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load coordinator private key: %w", err)
 		}
+		// load the public keys for validating milestones
+		keyManager := keymanager.New()
+		for _, keyRange := range deps.NodeBridge.NodeConfig.GetMilestoneKeyRanges() {
+			keyManager.AddKeyRange(keyRange.GetPublicKey(), keyRange.GetStartIndex(), keyRange.GetEndIndex())
+		}
+		// load the consensus parameters
+		n := len(Parameters.Tendermint.Validators)
+		t := int(deps.NodeBridge.NodeConfig.GetMilestonePublicKeyCount())
 
-		committee := decoo.NewCommittee(deps.CoordinatorPrivateKey, members...)
+		committee := decoo.NewCommitteeFromManager(coordinatorPrivateKey, n, t, keyManager)
 		coo, err := decoo.New(committee, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create: %w", err)
@@ -154,17 +155,22 @@ func provide(c *dig.Container) error {
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		CoordinatorPrivateKey ed25519.PrivateKey
-		Coordinator           *decoo.Coordinator
-		NodeBridge            *nodebridge.NodeBridge
+		Coordinator *decoo.Coordinator
+		NodeBridge  *nodebridge.NodeBridge
 	}
 	if err := c.Provide(func(deps tendermintDeps) (tmservice.Service, error) {
 		CoreComponent.LogInfo("Providing Tendermint ...")
 		defer CoreComponent.LogInfo("Providing Tendermint ... done")
 
-		conf, gen, err := loadTendermintConfig(deps.CoordinatorPrivateKey)
+		tendermintPrivateKey, err := loadEd25519PrivateKeyFromEnvironment(EnvTendermintPrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load config: %w", err)
+			return nil, fmt.Errorf("failed to load tendermint private key: %w", err)
+		}
+		networkName := deps.NodeBridge.ProtocolParameters().NetworkName
+
+		conf, gen, err := loadTendermintConfig(tendermintPrivateKey, networkName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load Tendermint config: %w", err)
 		}
 		// initialize the coordinator compatible with the configured Tendermint state
 		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, conf); err != nil {
@@ -175,13 +181,13 @@ func provide(c *dig.Container) error {
 		log := logger.NewLogger("Tendermint")
 		lvl, err := zapcore.ParseLevel(Parameters.Tendermint.LogLevel)
 		if err != nil {
-			return nil, fmt.Errorf("invalid level: %w", err)
+			return nil, fmt.Errorf("invalid log level: %w", err)
 		}
 
-		pval := privval.LoadOrGenFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
-		nodeKey, err := p2p.LoadOrGenNodeKey(conf.NodeKeyFile())
+		pval := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
+		nodeKey, err := p2p.LoadNodeKey(conf.NodeKeyFile())
 		if err != nil {
-			return nil, fmt.Errorf("failed to load or gen node key %s: %w", conf.NodeKeyFile(), err)
+			return nil, fmt.Errorf("failed to load node key %s: %w", conf.NodeKeyFile(), err)
 		}
 
 		// this replays blocks until Tendermint and Coordinator are synced

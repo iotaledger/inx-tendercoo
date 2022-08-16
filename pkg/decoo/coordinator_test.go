@@ -129,7 +129,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
-		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members()))
+		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members(ms.Index)))
 
 		// state must be valid
 		state, err := decoo.NewStateFromMilestone(ms)

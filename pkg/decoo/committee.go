@@ -14,13 +14,19 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 )
 
+// KeyManager contains the functions used from the iotago.KeyManager.
+type KeyManager interface {
+	PublicKeysSetForMilestoneIndex(iotago.MilestoneIndex) iotago.MilestonePublicKeySet
+}
+
 // PeerID is a simple peer ID.
 type PeerID = types.Byte32
 
 // Committee defines a committee of signers.
 type Committee struct {
 	privateKey ed25519.PrivateKey
-	idSet      map[PeerID]struct{}
+	n, t       int
+	manager    KeyManager
 }
 
 // IDFromPublicKey returns the ID from a given public key.
@@ -28,30 +34,39 @@ func IDFromPublicKey(publicKey ed25519.PublicKey) PeerID {
 	return types.Byte32FromSlice(publicKey)
 }
 
+// NewCommitteeFromManager creates a new committee.
+// The parameter n denotes the total number of committee members and t denotes the signature threshold.
+func NewCommitteeFromManager(privateKey ed25519.PrivateKey, n int, t int, manager KeyManager) *Committee {
+	return &Committee{privateKey, n, t, manager}
+}
+
 // NewCommittee creates a new committee.
-// The given private key must belong to one member.
-func NewCommittee(privateKey ed25519.PrivateKey, members ...ed25519.PublicKey) *Committee {
-	ids := make(map[PeerID]struct{}, len(members))
-	for _, member := range members {
-		id := IDFromPublicKey(member)
-		if _, has := ids[id]; has {
-			panic("duplicate member")
+// The function panics, if privateKey does not match a publicKey or when publicKeys contains duplicates.
+func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey) *Committee {
+	n := len(publicKeys)
+	t := n*2/3 + 1
+
+	keySet := make(singleKeyRange, n)
+	for _, member := range publicKeys {
+		publicKey := iotago.MilestonePublicKey(types.Byte32FromSlice(member))
+		if _, has := keySet[publicKey]; has {
+			panic("Committee: duplicate public key")
 		}
-		ids[id] = struct{}{}
+		keySet[publicKey] = struct{}{}
 	}
-	id := IDFromPublicKey(privateKey.Public().(ed25519.PublicKey))
-	if _, has := ids[id]; !has {
-		panic("validation: private key not a member")
+	publicKey := iotago.MilestonePublicKey(types.Byte32FromSlice(privateKey.Public().(ed25519.PublicKey)))
+	if _, has := keySet[publicKey]; !has {
+		panic("Committee: private key does not belong to a public key")
 	}
-	return &Committee{privateKey, ids}
+
+	return NewCommitteeFromManager(privateKey, n, t, keySet)
 }
 
 // N returns the number of members in the committee.
-func (v *Committee) N() int { return len(v.idSet) }
+func (v *Committee) N() int { return v.n }
 
 // T returns the threshold t required for valid signatures.
-// Currently, this corresponds to n-f, i.e. at least all honest members.
-func (v *Committee) T() int { return v.N()*2/3 + 1 }
+func (v *Committee) T() int { return v.t }
 
 // PublicKey returns the public key of the local member.
 func (v *Committee) PublicKey() ed25519.PublicKey {
@@ -64,12 +79,8 @@ func (v *Committee) ID() PeerID {
 }
 
 // Members returns a set of all members public keys.
-func (v *Committee) Members() iotago.MilestonePublicKeySet {
-	set := make(iotago.MilestonePublicKeySet, len(v.idSet))
-	for id := range v.idSet {
-		set[id] = struct{}{}
-	}
-	return set
+func (v *Committee) Members(msIndex iotago.MilestoneIndex) iotago.MilestonePublicKeySet {
+	return v.manager.PublicKeysSetForMilestoneIndex(msIndex)
 }
 
 // Sign signs the message with the local private key and returns a signature.
@@ -81,12 +92,19 @@ func (v *Committee) Sign(message []byte) *iotago.Ed25519Signature {
 }
 
 // VerifySingle verifies a single signature from a committee member.
-func (v *Committee) VerifySingle(message []byte, publicKey ed25519.PublicKey, signature []byte) error {
-	if _, has := v.idSet[IDFromPublicKey(publicKey)]; !has {
+func (v *Committee) VerifySingle(msIndex iotago.MilestoneIndex, message []byte, publicKey ed25519.PublicKey, signature []byte) error {
+	set := v.manager.PublicKeysSetForMilestoneIndex(msIndex)
+	if _, has := set[IDFromPublicKey(publicKey)]; !has {
 		return ErrNonApplicablePublicKey
 	}
 	if !ed25519.Verify(publicKey, message, signature) {
 		return ErrInvalidSignature
 	}
 	return nil
+}
+
+type singleKeyRange iotago.MilestonePublicKeySet
+
+func (r singleKeyRange) PublicKeysSetForMilestoneIndex(iotago.MilestoneIndex) iotago.MilestonePublicKeySet {
+	return r
 }
