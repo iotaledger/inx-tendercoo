@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/multiformats/go-multiaddr"
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
 	tendermintlog "github.com/tendermint/tendermint/libs/log"
@@ -57,9 +59,9 @@ func NewTenderLogger(log *logger.Logger, l zapcore.Level) TenderLogger {
 	return TenderLogger{log.Desugar().WithOptions(zap.AddCallerSkip(1)).Sugar(), zap.NewAtomicLevelAt(l)}
 }
 
-func loadTendermintConfig(key ed25519.PrivateKey, networkName string) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
+func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey ed25519.PrivateKey, networkName string) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
 	log := CoreComponent.Logger()
-	tmKey := tmed25519.PrivKey(key)
+	tmConsensusKey := tmed25519.PrivKey(consensusPrivateKey)
 
 	rootDir := Parameters.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
@@ -86,7 +88,7 @@ func loadTendermintConfig(key ed25519.PrivateKey, networkName string) (*tmconfig
 		log.Infow("Found private validator", "keyFile", privValKeyFile,
 			"stateFile", privValStateFile)
 	} else {
-		pv := privval.NewFilePV(tmKey, privValKeyFile, privValStateFile)
+		pv := privval.NewFilePV(tmConsensusKey, privValKeyFile, privValStateFile)
 		pv.Save()
 
 		log.Infow("Generated private validator", "keyFile", privValKeyFile, "stateFile", privValStateFile)
@@ -100,7 +102,7 @@ func loadTendermintConfig(key ed25519.PrivateKey, networkName string) (*tmconfig
 
 		log.Infow("Found node key", "path", nodeKeyFile)
 	} else {
-		nodeKey := p2p.NodeKey{PrivKey: tmKey}
+		nodeKey := p2p.NodeKey{PrivKey: tmed25519.PrivKey(nodePrivateKey)}
 		if err := nodeKey.SaveAs(nodeKeyFile); err != nil {
 			return nil, nil, fmt.Errorf("failed to save key file: %w", err)
 		}
@@ -123,12 +125,12 @@ func loadTendermintConfig(key ed25519.PrivateKey, networkName string) (*tmconfig
 		})
 
 		// validate the address
-		addr := p2p.IDAddressString(p2p.PubKeyToID(pubKey), validator.Address)
-		if _, err := p2p.NewNetAddressString(addr); err != nil {
+		addr, err := idAddressFromMultiaddr(validator.Address)
+		if err != nil {
 			return nil, nil, fmt.Errorf("invalid address for validator %s: %w", strconv.Quote(name), err)
 		}
 		// only add the address as a peer, if it does not belong to ourselves
-		if !tmKey.PubKey().Equals(pubKey) {
+		if !tmConsensusKey.PubKey().Equals(pubKey) {
 			peers = append(peers, addr)
 		}
 	}
@@ -157,4 +159,31 @@ func loadTendermintConfig(key ed25519.PrivateKey, networkName string) (*tmconfig
 		return nil, nil, fmt.Errorf("invalid genesis config: %w", err)
 	}
 	return conf, gen, nil
+}
+
+// idAddressFromMultiaddr returns the Tendermint compatible id@hostPort string from the given Multiaddr string.
+func idAddressFromMultiaddr(s string) (string, error) {
+	addr, err := peer.AddrInfoFromString(s)
+	if err != nil {
+		return "", err
+	}
+	pk, err := addr.ID.ExtractPublicKey()
+	if err != nil {
+		return "", err
+	}
+	keyBytes, err := pk.Raw()
+	if err != nil {
+		return "", err
+	}
+
+	pubKey := tmed25519.PubKey(keyBytes)
+	ip, err := addr.Addrs[0].ValueForProtocol(multiaddr.P_IP4)
+	if err != nil {
+		return "", fmt.Errorf("ip4 address not found: %w", err)
+	}
+	port, err := addr.Addrs[0].ValueForProtocol(multiaddr.P_TCP)
+	if err != nil {
+		return "", fmt.Errorf("tcp port not found: %w", err)
+	}
+	return p2p.IDAddressString(p2p.PubKeyToID(pubKey), ip+port), nil
 }

@@ -129,7 +129,7 @@ func provide(c *dig.Container) error {
 		defer CoreComponent.LogInfo("Providing Coordinator ... done")
 
 		// load the private key used for singing milestones
-		coordinatorPrivateKey, err := loadEd25519PrivateKeyFromEnvironment(EnvMilestonePrivateKey)
+		coordinatorPrivateKey, err := privateKeyFromEnvironment(EnvMilestonePrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load coordinator private key: %w", err)
 		}
@@ -147,6 +147,7 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create: %w", err)
 		}
+
 		return coo, nil
 	}); err != nil {
 		return err
@@ -162,15 +163,19 @@ func provide(c *dig.Container) error {
 		CoreComponent.LogInfo("Providing Tendermint ...")
 		defer CoreComponent.LogInfo("Providing Tendermint ... done")
 
-		tendermintPrivateKey, err := loadEd25519PrivateKeyFromEnvironment(EnvTendermintPrivateKey)
+		consensusPrivateKey, err := privateKeyFromEnvironment(EnvTendermintPrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load tendermint private key: %w", err)
+			return nil, fmt.Errorf("failed to load consensus private key: %w", err)
+		}
+		nodePrivateKey, err := privateKeyFromString(Parameters.Tendermint.NodePrivateKey, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load node private key: %w", err)
 		}
 		networkName := deps.NodeBridge.ProtocolParameters().NetworkName
 
-		conf, gen, err := loadTendermintConfig(tendermintPrivateKey, networkName)
+		conf, gen, err := loadTendermintConfig(consensusPrivateKey, nodePrivateKey, networkName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load Tendermint config: %w", err)
+			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 		// initialize the coordinator compatible with the configured Tendermint state
 		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, conf); err != nil {
@@ -190,8 +195,8 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to load node key %s: %w", conf.NodeKeyFile(), err)
 		}
 
-		// this replays blocks until Tendermint and Coordinator are synced
-		return tmnode.NewNode(conf,
+		// start Tendermint, this replays blocks until Tendermint and Coordinator are synced
+		node, err := tmnode.NewNode(conf,
 			pval,
 			nodeKey,
 			proxy.NewLocalClientCreator(deps.Coordinator),
@@ -199,6 +204,13 @@ func provide(c *dig.Container) error {
 			tmnode.DefaultDBProvider,
 			tmnode.DefaultMetricsProvider(conf.Instrumentation),
 			NewTenderLogger(log, lvl))
+		if err != nil {
+			return nil, fmt.Errorf("failed to start Tendermint: %w", err)
+		}
+		addr, _ := node.NodeInfo().NetAddress()
+		CoreComponent.LogInfof("Tendermint started: %s", addr)
+
+		return node, nil
 	}); err != nil {
 		return err
 	}
@@ -443,15 +455,27 @@ func processMilestone(milestone *iotago.Milestone) {
 	newMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
-// loadEd25519PrivateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
-func loadEd25519PrivateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
+// privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
+func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	value, exists := os.LookupEnv(name)
 	if !exists {
 		return nil, fmt.Errorf("environment variable '%s' not set", name)
 	}
-	var seed types.Byte32
-	if err := seed.Set(value); err != nil {
+	key, err := privateKeyFromString(value, false)
+	if err != nil {
 		return nil, fmt.Errorf("environment variable '%s' contains an invalid private key: %w", name, err)
+	}
+	return key, nil
+}
+
+func privateKeyFromString(s string, generateIfEmpty bool) (ed25519.PrivateKey, error) {
+	if generateIfEmpty && s == "" {
+		_, key, err := ed25519.GenerateKey(nil)
+		return key, err
+	}
+	var seed types.Byte32
+	if err := seed.Set(s); err != nil {
+		return nil, err
 	}
 	return ed25519.NewKeyFromSeed(seed[:]), nil
 }

@@ -18,12 +18,14 @@ type ParametersDefinition struct {
 	} `name:"tipsel"`
 
 	Tendermint struct {
-		BindAddress string                      `default:"0.0.0.0:26656" usage:"bind address for incoming connections"`
-		Root        string                      `default:"tendermint" usage:"root folder to store config and database"`
-		LogLevel    string                      `default:"info" usage:"logging level of the Tendermint Core; cannot be lower than the global level"`
-		GenesisTime int64                       `default:"0" usage:"time the blockchain started or will start in Unix time using seconds"`
-		ChainID     string                      `default:"tendercoo" usage:"identifier of the blockchain; every chain must have a unique ID"`
-		Validators  map[string]ValidatorsConfig `noflag:"true" usage:"set of validators"`
+		BindAddress    string `default:"0.0.0.0:26656" usage:"bind address for incoming connections"`
+		NodePrivateKey string `default:"" usage:"node's private key used for P2P communication (optional)"`
+		Root           string `default:"tendermint" usage:"root folder to store config and database"`
+		LogLevel       string `default:"info" usage:"logging level of the Tendermint Core; cannot be lower than the global level"`
+		GenesisTime    int64  `default:"0" usage:"time the blockchain started or will start in Unix time using seconds"`
+		ChainID        string `default:"tendercoo" usage:"identifier of the blockchain; every chain must have a unique ID"`
+
+		Validators map[string]ValidatorsConfig `noflag:"true" usage:"set of validators"`
 
 		Consensus struct {
 			CreateEmptyBlocks         bool          `default:"false" usage:"whether empty blocks are created"`
