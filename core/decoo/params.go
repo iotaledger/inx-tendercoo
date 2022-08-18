@@ -26,6 +26,7 @@ type ParametersDefinition struct {
 		LogLevel    string                      `default:"info" usage:"logging level of the Tendermint Core; cannot be lower than the global level"`
 		GenesisTime int64                       `default:"0" usage:"time the blockchain started or will start in Unix time using seconds"`
 		ChainID     string                      `default:"tendercoo" usage:"identifier of the blockchain; every chain must have a unique ID"`
+		Peers       []string                    `usage:"addresses of the Tendermint nodes to connect to (ID@Host:Port)"`
 		Validators  map[string]ValidatorsConfig `noflag:"true" usage:"set of validators"`
 
 		Consensus struct {
@@ -46,7 +47,6 @@ type ParametersDefinition struct {
 type ValidatorsConfig struct {
 	PublicKey string `usage:"consensus key of the validator"`
 	Power     int64  `usage:"voting power of the validator"`
-	Address   string `usage:"address of the validator (ID@Host:Port)"`
 }
 
 // Parameters contains the configuration parameters of the decoo app.

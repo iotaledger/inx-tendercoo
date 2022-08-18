@@ -109,7 +109,6 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 	}
 
 	var genesisValidators []tmtypes.GenesisValidator
-	var peers []string
 	for name, validator := range Parameters.Tendermint.Validators {
 		var publicKeyBytes types.Byte32
 		if err := publicKeyBytes.Set(validator.PublicKey); err != nil {
@@ -121,14 +120,19 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 			Power:  validator.Power,
 			Name:   name,
 		})
+	}
 
-		// validate the address
-		if _, err := p2p.NewNetAddressString(validator.Address); err != nil {
-			return nil, nil, fmt.Errorf("invalid address for validator %s: %w", strconv.Quote(name), err)
+	var peers []string
+	id := p2p.PubKeyToID(tmConsensusKey.PubKey())
+	for _, peer := range Parameters.Tendermint.Peers {
+		addr, err := p2p.NewNetAddressString(peer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid address in peers: %w", err)
 		}
+
 		// only add the address as a peer, if it does not belong to ourselves
-		if !tmConsensusKey.PubKey().Equals(pubKey) {
-			peers = append(peers, validator.Address)
+		if id != addr.ID {
+			peers = append(peers, peer)
 		}
 	}
 

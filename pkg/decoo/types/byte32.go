@@ -56,6 +56,6 @@ func (b *Byte32) Set(s string) error {
 }
 
 // Type returns the type of the option.
-func (b *Byte32) Type() string { return "byte32Hex" }
+func (b Byte32) Type() string { return "byte32Hex" }
 
-func (b *Byte32) String() string { return hex.EncodeToString(b[:]) }
+func (b Byte32) String() string { return hex.EncodeToString(b[:]) }

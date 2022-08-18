@@ -2,6 +2,7 @@ package decoo
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"time"
@@ -124,7 +125,7 @@ func (c *Coordinator) Bootstrap(force bool, index uint32, milestoneID iotago.Mil
 		LastMilestoneBlockID: milestoneBlockID,
 	}
 	c.initState(0, state)
-	c.log.Infow("coordinator bootstrapped", "state", state)
+	c.log.Infow("Coordinator bootstrapped", "state", state)
 	return nil
 }
 
@@ -136,7 +137,7 @@ func (c *Coordinator) InitState(ms *iotago.Milestone) error {
 	}
 
 	c.initState(state.MilestoneHeight, state)
-	c.log.Infow("coordinator resumed", "state", state)
+	c.log.Infow("Coordinator resumed", "state", state)
 	return nil
 }
 
@@ -145,7 +146,7 @@ func (c *Coordinator) Start(client ABCIClient) error {
 	c.abciClient = client
 	c.started.Store(true)
 
-	c.log.Infow("coordinator started", "pubKey", c.committee.ID())
+	c.log.Infow("Coordinator started", "publicKey", c.committee.ID())
 	return nil
 }
 
@@ -155,6 +156,11 @@ func (c *Coordinator) Stop() error {
 	c.cancel()
 	c.broadcastQueue.Stop()
 	return nil
+}
+
+// PublicKey returns the milestone public key of the instance.
+func (c *Coordinator) PublicKey() ed25519.PublicKey {
+	return c.committee.PublicKey()
 }
 
 // MilestoneIndex returns the milestone index of the current coordinator state.

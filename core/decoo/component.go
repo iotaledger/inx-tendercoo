@@ -13,7 +13,6 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/tendermint/tendermint/config"
-	tmservice "github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
@@ -107,7 +106,7 @@ type dependencies struct {
 	dig.In
 	Coordinator    *decoo.Coordinator
 	Selector       *mselection.HeaviestSelector
-	TendermintNode tmservice.Service
+	TendermintNode *tmnode.Node
 	NodeBridge     *nodebridge.NodeBridge
 	TangleListener *nodebridge.TangleListener
 }
@@ -145,7 +144,7 @@ func provide(c *dig.Container) error {
 		committee := decoo.NewCommitteeFromManager(coordinatorPrivateKey, n, t, keyManager)
 		coo, err := decoo.New(committee, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
-			return nil, fmt.Errorf("failed to create: %w", err)
+			return nil, fmt.Errorf("failed to provide coordinator: %w", err)
 		}
 
 		return coo, nil
@@ -159,7 +158,7 @@ func provide(c *dig.Container) error {
 		Coordinator *decoo.Coordinator
 		NodeBridge  *nodebridge.NodeBridge
 	}
-	if err := c.Provide(func(deps tendermintDeps) (tmservice.Service, error) {
+	if err := c.Provide(func(deps tendermintDeps) (*tmnode.Node, error) {
 		CoreComponent.LogInfo("Providing Tendermint ...")
 		defer CoreComponent.LogInfo("Providing Tendermint ... done")
 
@@ -205,10 +204,8 @@ func provide(c *dig.Container) error {
 			tmnode.DefaultMetricsProvider(conf.Instrumentation),
 			NewTenderLogger(log, lvl))
 		if err != nil {
-			return nil, fmt.Errorf("failed to start Tendermint: %w", err)
+			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
-		addr, _ := node.NodeInfo().NetAddress()
-		CoreComponent.LogInfof("Tendermint started: %s", addr)
 
 		return node, nil
 	}); err != nil {
@@ -323,7 +320,11 @@ func run() error {
 		if err := deps.TendermintNode.Start(); err != nil {
 			CoreComponent.LogPanicf("failed to start: %s", err)
 		}
-		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ... done")
+
+		addr, _ := deps.TendermintNode.NodeInfo().NetAddress()
+		pubKey, _ := deps.TendermintNode.PrivValidator().GetPubKey()
+		CoreComponent.LogInfof("Started "+tendermintWorkerName+": Address=%s, ConsensusPublicKey=%s",
+			addr, types.Byte32FromSlice(pubKey.Bytes()))
 
 		<-ctx.Done()
 		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " ...")
@@ -340,7 +341,7 @@ func run() error {
 		attachEvents()
 		defer detachEvents()
 
-		rpc := rpclocal.New(deps.TendermintNode.(*tmnode.Node))
+		rpc := rpclocal.New(deps.TendermintNode)
 		if err := deps.Coordinator.Start(rpc); err != nil {
 			CoreComponent.LogPanicf("failed to start: %s", err)
 		}
