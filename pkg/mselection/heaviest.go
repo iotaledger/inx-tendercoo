@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
-
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -110,11 +109,9 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 	parents := meta.UnwrapParents()
 	trackedParents := make([]*trackedBlock, 0, len(parents))
 	for _, parent := range parents {
-		trackedParent := s.trackedBlocks[parent]
-		if trackedParent == nil {
-			continue
+		if block, ok := s.trackedBlocks[parent]; ok {
+			trackedParents = append(trackedParents, block)
 		}
-		trackedParents = append(trackedParents, trackedParent)
 	}
 
 	// compute the referenced blocks

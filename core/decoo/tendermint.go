@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/multiformats/go-multiaddr"
 	tmconfig "github.com/tendermint/tendermint/config"
 	tmed25519 "github.com/tendermint/tendermint/crypto/ed25519"
 	tendermintlog "github.com/tendermint/tendermint/libs/log"
@@ -113,11 +111,11 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 	var genesisValidators []tmtypes.GenesisValidator
 	var peers []string
 	for name, validator := range Parameters.Tendermint.Validators {
-		var pubKeyBytes types.Byte32
-		if err := pubKeyBytes.Set(validator.PubKey); err != nil {
-			return nil, nil, fmt.Errorf("invalid pubKey for validator %s: %w", strconv.Quote(name), err)
+		var publicKeyBytes types.Byte32
+		if err := publicKeyBytes.Set(validator.PublicKey); err != nil {
+			return nil, nil, fmt.Errorf("invalid public key for validator %s: %w", strconv.Quote(name), err)
 		}
-		pubKey := tmed25519.PubKey(pubKeyBytes[:])
+		pubKey := tmed25519.PubKey(publicKeyBytes[:])
 		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
 			PubKey: pubKey,
 			Power:  validator.Power,
@@ -125,13 +123,12 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 		})
 
 		// validate the address
-		addr, err := idAddressFromMultiaddr(validator.Address)
-		if err != nil {
+		if _, err := p2p.NewNetAddressString(validator.Address); err != nil {
 			return nil, nil, fmt.Errorf("invalid address for validator %s: %w", strconv.Quote(name), err)
 		}
 		// only add the address as a peer, if it does not belong to ourselves
 		if !tmConsensusKey.PubKey().Equals(pubKey) {
-			peers = append(peers, addr)
+			peers = append(peers, validator.Address)
 		}
 	}
 
@@ -159,31 +156,4 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 		return nil, nil, fmt.Errorf("invalid genesis config: %w", err)
 	}
 	return conf, gen, nil
-}
-
-// idAddressFromMultiaddr returns the Tendermint compatible id@hostPort string from the given Multiaddr string.
-func idAddressFromMultiaddr(s string) (string, error) {
-	addr, err := peer.AddrInfoFromString(s)
-	if err != nil {
-		return "", err
-	}
-	pk, err := addr.ID.ExtractPublicKey()
-	if err != nil {
-		return "", err
-	}
-	keyBytes, err := pk.Raw()
-	if err != nil {
-		return "", err
-	}
-
-	pubKey := tmed25519.PubKey(keyBytes)
-	ip, err := addr.Addrs[0].ValueForProtocol(multiaddr.P_IP4)
-	if err != nil {
-		return "", fmt.Errorf("ip4 address not found: %w", err)
-	}
-	port, err := addr.Addrs[0].ValueForProtocol(multiaddr.P_TCP)
-	if err != nil {
-		return "", fmt.Errorf("tcp port not found: %w", err)
-	}
-	return p2p.IDAddressString(p2p.PubKeyToID(pubKey), ip+port), nil
 }

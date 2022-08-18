@@ -83,6 +83,8 @@ services:
       - "--cooBootstrap"
       - "--cooStartIndex=1"
       - "--inx.address=172.18.211.11:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
+      - "--coordinator.tendermint.nodePrivateKey=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
     profiles:
       - bootstrap
 
@@ -103,6 +105,8 @@ services:
       - "-c"
       - "config.json"
       - "--inx.address=172.18.211.11:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
+      - "--coordinator.tendermint.nodePrivateKey=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
     profiles:
       - run
 
@@ -153,6 +157,8 @@ services:
       - "--cooBootstrap"
       - "--cooStartIndex=1"
       - "--inx.address=172.18.211.12:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
+      - "--coordinator.tendermint.nodePrivateKey=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
     profiles:
       - bootstrap
 
@@ -173,6 +179,8 @@ services:
       - "-c"
       - "config.json"
       - "--inx.address=172.18.211.12:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
+      - "--coordinator.tendermint.nodePrivateKey=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
     profiles:
       - run
 
@@ -223,6 +231,8 @@ services:
       - "--cooBootstrap"
       - "--cooStartIndex=1"
       - "--inx.address=172.18.211.13:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
+      - "--coordinator.tendermint.nodePrivateKey=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
     profiles:
       - bootstrap
 
@@ -243,6 +253,8 @@ services:
       - "-c"
       - "config.json"
       - "--inx.address=172.18.211.13:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
+      - "--coordinator.tendermint.nodePrivateKey=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
     profiles:
       - run
 
@@ -293,6 +305,8 @@ services:
       - "--cooBootstrap"
       - "--cooStartIndex=1"
       - "--inx.address=172.18.211.14:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
+      - "--coordinator.tendermint.nodePrivateKey=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
     profiles:
       - bootstrap
 
@@ -313,6 +327,8 @@ services:
       - "-c"
       - "config.json"
       - "--inx.address=172.18.211.14:9029"
+      - "--coordinator.tendermint.consensusPrivateKey=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
+      - "--coordinator.tendermint.nodePrivateKey=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
     profiles:
       - run
 

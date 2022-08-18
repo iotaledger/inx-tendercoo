@@ -163,11 +163,11 @@ func provide(c *dig.Container) error {
 		CoreComponent.LogInfo("Providing Tendermint ...")
 		defer CoreComponent.LogInfo("Providing Tendermint ... done")
 
-		consensusPrivateKey, err := privateKeyFromEnvironment(EnvTendermintPrivateKey)
+		consensusPrivateKey, err := privateKeyFromString(Parameters.Tendermint.ConsensusPrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load consensus private key: %w", err)
 		}
-		nodePrivateKey, err := privateKeyFromString(Parameters.Tendermint.NodePrivateKey, true)
+		nodePrivateKey, err := privateKeyFromString(Parameters.Tendermint.NodePrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load node private key: %w", err)
 		}
@@ -459,20 +459,16 @@ func processMilestone(milestone *iotago.Milestone) {
 func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	value, exists := os.LookupEnv(name)
 	if !exists {
-		return nil, fmt.Errorf("environment variable '%s' not set", name)
+		return nil, fmt.Errorf("environment variable %s not set", strconv.Quote(name))
 	}
-	key, err := privateKeyFromString(value, false)
+	key, err := privateKeyFromString(value)
 	if err != nil {
-		return nil, fmt.Errorf("environment variable '%s' contains an invalid private key: %w", name, err)
+		return nil, fmt.Errorf("environment variable %s contains an invalid private key: %w", strconv.Quote(name), err)
 	}
 	return key, nil
 }
 
-func privateKeyFromString(s string, generateIfEmpty bool) (ed25519.PrivateKey, error) {
-	if generateIfEmpty && s == "" {
-		_, key, err := ed25519.GenerateKey(nil)
-		return key, err
-	}
+func privateKeyFromString(s string) (ed25519.PrivateKey, error) {
 	var seed types.Byte32
 	if err := seed.Set(s); err != nil {
 		return nil, err
