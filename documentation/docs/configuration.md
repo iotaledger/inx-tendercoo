@@ -91,6 +91,7 @@ Example:
 | logLevel                                         | Logging level of the Tendermint Core; cannot be lower than the global level | string | "info"            |
 | genesisTime                                      | Time the blockchain started or will start in Unix time using seconds        | int    | 0                 |
 | chainID                                          | Identifier of the blockchain; every chain must have a unique ID             | string | "tendercoo"       |
+| peers                                            | Addresses of the Tendermint nodes to connect to (ID@Host:Port)              | array  |                   |
 | [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                                                 | object |                   |
 | [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                                                | object |                   |
 | validators                                       | Set of validators                                                           | object | see example below |
@@ -131,6 +132,7 @@ Example:
         "logLevel": "info",
         "genesisTime": 0,
         "chainID": "tendercoo",
+        "peers": null,
         "consensus": {
           "createEmptyBlocks": false,
           "createEmptyBlocksInterval": "0s",

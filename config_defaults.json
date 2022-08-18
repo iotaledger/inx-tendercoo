@@ -22,6 +22,7 @@
       "logLevel": "info",
       "genesisTime": 0,
       "chainID": "tendercoo",
+      "peers": null,
       "consensus": {
         "createEmptyBlocks": false,
         "createEmptyBlocksInterval": "0s",
