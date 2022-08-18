@@ -16,6 +16,8 @@
     },
     "tendermint": {
       "bindAddress": "0.0.0.0:26656",
+      "consensusPrivateKey": "",
+      "nodePrivateKey": "",
       "root": "tendermint",
       "logLevel": "info",
       "genesisTime": 0,

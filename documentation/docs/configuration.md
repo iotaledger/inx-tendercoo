@@ -68,23 +68,25 @@ Example:
 | Name                                  | Description                                                     | Type   | Default value |
 | ------------------------------------- | --------------------------------------------------------------- | ------ | ------------- |
 | interval                              | Target interval in which milestones are issued                  | string | "5s"          |
-| maxTrackedBlocks                      | Maximum amount of blocks tracked by the milestone tip selection | int    | 10000         |
+| maxTrackedBlocks                      | Maximum number of blocks tracked by the milestone tip selection | int    | 10000         |
 | [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object |               |
 | [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object |               |
 
 ### <a id="coordinator_tipsel"></a> Tipsel
 
-| Name                     | Description                                                                         | Type   | Default value |
-| ------------------------ | ----------------------------------------------------------------------------------- | ------ | ------------- |
-| maxTips                  | Maximum amount of tips returned                                                     | int    | 7             |
-| reducedConfirmationLimit | Only select tips that newly reference more than this limit compared to the best tip | float  | 0.5           |
-| timeout                  | Timeout after which tip selection is canceled                                       | string | "100ms"       |
+| Name                     | Description                                                                                              | Type   | Default value |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- | ------ | ------------- |
+| maxTips                  | Maximum number of tips returned                                                                          | int    | 7             |
+| reducedConfirmationLimit | Stop selection, when tips reference less additional blocks than this fraction (compared to the best tip) | float  | 0.5           |
+| timeout                  | Timeout after which tip selection is canceled                                                            | string | "100ms"       |
 
 ### <a id="coordinator_tendermint"></a> Tendermint
 
 | Name                                             | Description                                                                 | Type   | Default value     |
 | ------------------------------------------------ | --------------------------------------------------------------------------- | ------ | ----------------- |
 | bindAddress                                      | Bind address for incoming connections                                       | string | "0.0.0.0:26656"   |
+| consensusPrivateKey                              | Node's private key used for consensus                                       | string | ""                |
+| nodePrivateKey                                   | Node's private key used for P2P communication                               | string | ""                |
 | root                                             | Root folder to store config and database                                    | string | "tendermint"      |
 | logLevel                                         | Logging level of the Tendermint Core; cannot be lower than the global level | string | "info"            |
 | genesisTime                                      | Time the blockchain started or will start in Unix time using seconds        | int    | 0                 |
@@ -123,6 +125,8 @@ Example:
       },
       "tendermint": {
         "bindAddress": "0.0.0.0:26656",
+        "consensusPrivateKey": "",
+        "nodePrivateKey": "",
         "root": "tendermint",
         "logLevel": "info",
         "genesisTime": 0,
