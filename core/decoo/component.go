@@ -52,8 +52,6 @@ const (
 
 	// EnvMilestonePrivateKey defines the name of the environment variable containing the key used for signing milestones.
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
-	// EnvTendermintPrivateKey defines the name of the environment variable containing the Tendermint node and consensus key.
-	EnvTendermintPrivateKey = "COO_PRV_KEY"
 
 	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
