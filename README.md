@@ -35,6 +35,8 @@ This means that, as long as the pruning interval of the connected node is longer
     - `tendermint.validators.$NAME.power` specifies the voting power of the validator.
     - `tendermint.validators.$NAME.address` specifies the IP address and port of the validator.
 
+Additional information on running Tendermint in production can be found here: [Tendermint Core / Overview / Running in production](https://docs.tendermint.com/v0.34/tendermint-core/running-in-production.html)
+
 ## Tip Selection
 
 Each validator proposes one tip to the consensus mechanism for selection as a milestone parent. This process is called _Tip Selection_ and is based on the following algorithm:
