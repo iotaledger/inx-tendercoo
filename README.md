@@ -1,6 +1,6 @@
 # INX-TenderCoo
 
-This repository contains an [INX](https://github.com/iotaledger/inx) plugin for a distributed coordinator using [Tendermint Core](https://github.com/tendermint/tendermint) BFT consensus.
+This repository contains an [INX](https://github.com/iotaledger/inx) plugin for a distributed coordinator using [Tendermint Core](https://github.com/tendermint/tendermint) BFT consensus. Each plugin contains its own Tendermint node and represents one validator in the network.
 
 ## Bootstrapping
 
@@ -10,7 +10,8 @@ Then, additional bootstrap parameters can be set used additional command line fl
 - `--cooStartMilestoneID byte32Hex` specifies the `Previous Milestone ID` of the first issued milestone in hex-encoding. According to TIP-29 this can only be all zero, if `Index Number` equals the `First Milestone Index` protocol parameter. Otherwise, it must reference the previous milestone.
 - `--cooStartMilestoneBlockID byte32Hex` specifies the _Block ID_ of a block containing the milestone with ID matching `Previous Milestone ID`. If `Index Number` equals `First Milestone Index`, this can be all zero. Otherwise, it must reference the previous milestone.
 
-If the `--cooBootstrap` flag is set, but the latest milestone of the connected node was issued by INX-TenderCoo validators, the plugin will crash as this is a restart and not bootstrapping.
+The plugin performs some sanity checks whether the given `Index`, `Milestone ID` and `Milestone Block ID` is consistent with the latest milestone (if present) of the connected node.
+It crashes when these checks fail. In an emergency, the bootstrapping fail-safes can be disabled completely by additionally setting the `--cooBootstrapForce` flag.
 
 ## Restart
 
@@ -33,3 +34,57 @@ This means that, as long as the pruning interval of the connected node is longer
     - `tendermint.validators.$NAME.pubKey` specifies the consensus key of the validator.
     - `tendermint.validators.$NAME.power` specifies the voting power of the validator.
     - `tendermint.validators.$NAME.address` specifies the IP address and port of the validator.
+
+Additional information on running Tendermint in production can be found here: [Tendermint Core / Overview / Running in production](https://docs.tendermint.com/v0.34/tendermint-core/running-in-production.html)
+
+## Tip Selection
+
+Each validator proposes one tip to the consensus mechanism for selection as a milestone parent. This process is called _Tip Selection_ and is based on the following algorithm:
+
+### Heaviest Tip Heuristic
+
+#### Global
+
+- B &ndash; considered blocks
+- Rⱼ ∀j∈B &ndash; blocks referenced by block j
+- T &ndash; tip set
+-
+#### OnBlockSolid(𝑖)
+
+Input:
+- 𝑖 &ndash; newly solid and valid block
+
+Steps:
+- B←B∪{𝑖}
+- compute and store the set of referenced blocks Rᵢ←{𝑖}∪⋃j∈parents(𝑖)∩BRⱼ
+- update the tip set T←(T∪{𝑖})∖parents(𝑖)
+
+#### Select()
+
+Output:
+- S &ndash; subset of selected tips
+
+Steps:
+- S←∅
+- while |S|< `MaxTips`
+  - t←argmaxj∈T|Rⱼ|
+  - if |Rₜ|/argmaxj∈S|Rⱼ| < `ReducedConfirmationLimit`:
+    - break
+  - For each j∈B:
+    - Rⱼ←Rⱼ∖Rₜ
+  - S←S∪{t}
+- reset tracked blocks B←∅ and all Rⱼ
+- return S
+
+#### Implementation Details
+
+- Each block b∈B is assigned a unique integer index.
+- The sets Rⱼ are represented as bit vectors, with the bit Rⱼ[i] denoting whether the block with index i is contained in the set.
+- While bit vectors allow for very efficient computations of union and difference, they require a lot of space: O(|B|²). To prevent this from getting out of hand, the set B needs to be reset after each Select. (With this step we effectively lose track of all the blocks which are not referenced by S. However, this becomes less relevant the more blocks are referenced with one Select.)
+- To further limit the size of B, the creation of the next milestone must be prematurely triggered (and thus also a call of Select) when B> MaxTrackedBlocks
+- Note: Select() chooses the tips using a greedy heuristic. In general, there can be another set of tips S′ of the same size that reference more blocks than S.
+
+#### Parameters:
+- `MaxTrackedBlocks` specifies the maximum number of blocks tracked by the milestone tip selection.
+- `MaxTips` specifies the maximum number of tips returned by the tip selection.
+- `ReducedConfirmationLimit`: Stop the selection, when tips reference less additional blocks than this fraction (compared to the number of tips referenced by the first and best tip).

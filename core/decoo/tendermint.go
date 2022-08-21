@@ -57,9 +57,9 @@ func NewTenderLogger(log *logger.Logger, l zapcore.Level) TenderLogger {
 	return TenderLogger{log.Desugar().WithOptions(zap.AddCallerSkip(1)).Sugar(), zap.NewAtomicLevelAt(l)}
 }
 
-func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
+func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey ed25519.PrivateKey, networkName string) (*tmconfig.Config, *tmtypes.GenesisDoc, error) {
 	log := CoreComponent.Logger()
-	privKey := tmed25519.PrivKey(priv)
+	tmConsensusKey := tmed25519.PrivKey(consensusPrivateKey)
 
 	rootDir := Parameters.Tendermint.Root
 	tmconfig.EnsureRoot(rootDir)
@@ -67,10 +67,16 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	conf.P2P.ListenAddress = "tcp://" + Parameters.Tendermint.BindAddress
 
 	// consensus parameters
-	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.Consensus.CreateEmptyBlocks
-	conf.Consensus.CreateEmptyBlocksInterval = Parameters.Tendermint.Consensus.CreateEmptyBlocksInterval
 	conf.Consensus.TimeoutCommit = Parameters.Tendermint.Consensus.BlockInterval
 	conf.Consensus.SkipTimeoutCommit = Parameters.Tendermint.Consensus.SkipBlockTimeout
+	conf.Consensus.CreateEmptyBlocks = Parameters.Tendermint.Consensus.CreateEmptyBlocks
+	conf.Consensus.CreateEmptyBlocksInterval = Parameters.Tendermint.Consensus.CreateEmptyBlocksInterval
+
+	// mempool parameters
+	// limit the mempool to at most 1000 transactions of up to 1 KB
+	conf.Mempool.Size = 1000
+	conf.Mempool.MaxTxBytes = 1024
+	conf.Mempool.MaxTxsBytes = int64(conf.Mempool.Size) * int64(conf.Mempool.MaxTxBytes)
 
 	// private validator
 	privValKeyFile := conf.PrivValidatorKeyFile()
@@ -80,7 +86,7 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 		log.Infow("Found private validator", "keyFile", privValKeyFile,
 			"stateFile", privValStateFile)
 	} else {
-		pv := privval.NewFilePV(privKey, privValKeyFile, privValStateFile)
+		pv := privval.NewFilePV(tmConsensusKey, privValKeyFile, privValStateFile)
 		pv.Save()
 
 		log.Infow("Generated private validator", "keyFile", privValKeyFile, "stateFile", privValStateFile)
@@ -94,8 +100,7 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 
 		log.Infow("Found node key", "path", nodeKeyFile)
 	} else {
-		// TODO: should the Tendermint node key (message authentication) be different from our signing key
-		nodeKey := p2p.NodeKey{PrivKey: privKey}
+		nodeKey := p2p.NodeKey{PrivKey: tmed25519.PrivKey(nodePrivateKey)}
 		if err := nodeKey.SaveAs(nodeKeyFile); err != nil {
 			return nil, nil, fmt.Errorf("failed to save key file: %w", err)
 		}
@@ -103,23 +108,31 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
-	ownPubKey := privKey.PubKey()
 	var genesisValidators []tmtypes.GenesisValidator
-	var peers []string
 	for name, validator := range Parameters.Tendermint.Validators {
-		var pubKeyBytes types.Byte32
-		if err := pubKeyBytes.Set(validator.PubKey); err != nil {
-			return nil, nil, fmt.Errorf("invalid pubKey for tendermint validator %s: %w", strconv.Quote(name), err)
+		var publicKeyBytes types.Byte32
+		if err := publicKeyBytes.Set(validator.PublicKey); err != nil {
+			return nil, nil, fmt.Errorf("invalid public key for validator %s: %w", strconv.Quote(name), err)
 		}
-		pubKey := tmed25519.PubKey(pubKeyBytes[:])
+		pubKey := tmed25519.PubKey(publicKeyBytes[:])
 		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
 			PubKey: pubKey,
 			Power:  validator.Power,
 			Name:   name,
 		})
-		if !ownPubKey.Equals(pubKey) {
-			nodeID := p2p.PubKeyToID(pubKey)
-			peers = append(peers, p2p.IDAddressString(nodeID, validator.Address))
+	}
+
+	var peers []string
+	id := p2p.PubKeyToID(tmConsensusKey.PubKey())
+	for _, peer := range Parameters.Tendermint.Peers {
+		addr, err := p2p.NewNetAddressString(peer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid address in peers: %w", err)
+		}
+
+		// only add the address as a peer, if it does not belong to ourselves
+		if id != addr.ID {
+			peers = append(peers, peer)
 		}
 	}
 
@@ -134,6 +147,9 @@ func loadTendermintConfig(priv ed25519.PrivateKey) (*tmconfig.Config, *tmtypes.G
 	conf.Instrumentation.Prometheus = Parameters.Tendermint.Prometheus.Enabled
 	conf.Instrumentation.PrometheusListenAddr = Parameters.Tendermint.Prometheus.BindAddress
 
+	if Parameters.Tendermint.ChainID != networkName {
+		return nil, nil, fmt.Errorf("chain ID must match the network name %s", strconv.Quote(networkName))
+	}
 	gen := &tmtypes.GenesisDoc{
 		GenesisTime:   time.Unix(Parameters.Tendermint.GenesisTime, 0),
 		ChainID:       Parameters.Tendermint.ChainID,

@@ -2,6 +2,7 @@ package decoo
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"time"
@@ -35,6 +36,7 @@ type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
 
+	BlockMetadata(iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
 }
@@ -107,16 +109,11 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 }
 
 // Bootstrap bootstraps the coordinator with the give state.
-func (c *Coordinator) Bootstrap(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	latest, err := c.inxClient.LatestMilestone()
-	if err != nil {
-		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
-	}
-
-	// assure that we do not re-bootstrap a network
-	if latest != nil {
-		if _, err := NewStateFromMilestone(latest); err == nil {
-			return fmt.Errorf("milestone %d contains a valid state", latest.Index)
+func (c *Coordinator) Bootstrap(force bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+	// validate bootstrapping parameters against the latest milestone if not forced
+	if !force {
+		if err := c.validateLatest(index, milestoneID, milestoneBlockID); err != nil {
+			return err
 		}
 	}
 
@@ -128,7 +125,7 @@ func (c *Coordinator) Bootstrap(index uint32, milestoneID iotago.MilestoneID, mi
 		LastMilestoneBlockID: milestoneBlockID,
 	}
 	c.initState(0, state)
-	c.log.Infow("coordinator bootstrapped", "state", state)
+	c.log.Infow("Coordinator bootstrapped", "state", state)
 	return nil
 }
 
@@ -140,7 +137,7 @@ func (c *Coordinator) InitState(ms *iotago.Milestone) error {
 	}
 
 	c.initState(state.MilestoneHeight, state)
-	c.log.Infow("coordinator resumed", "state", state)
+	c.log.Infow("Coordinator resumed", "state", state)
 	return nil
 }
 
@@ -149,7 +146,7 @@ func (c *Coordinator) Start(client ABCIClient) error {
 	c.abciClient = client
 	c.started.Store(true)
 
-	c.log.Infow("coordinator started", "pubKey", c.committee.ID())
+	c.log.Infow("Coordinator started", "publicKey", c.committee.ID())
 	return nil
 }
 
@@ -159,6 +156,11 @@ func (c *Coordinator) Stop() error {
 	c.cancel()
 	c.broadcastQueue.Stop()
 	return nil
+}
+
+// PublicKey returns the milestone public key of the instance.
+func (c *Coordinator) PublicKey() ed25519.PublicKey {
+	return c.committee.PublicKey()
 }
 
 // MilestoneIndex returns the milestone index of the current coordinator state.
@@ -194,6 +196,28 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	if res.Code != CodeTypeOK {
 		return fmt.Errorf("invalid proposal: %s", res.Log)
 	}
+	return nil
+}
+
+func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
+	latest, err := c.inxClient.LatestMilestone()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
+	}
+
+	// assure that we do not re-bootstrap the network
+	if latest != nil {
+		if latest.Index != index-1 {
+			return fmt.Errorf("latest milestone %d is incompatible: Index=%d", latest.Index, latest.Index)
+		}
+		if id := latest.MustID(); id != milestoneID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID=%s", latest.Index, id)
+		}
+		if id := MilestoneBlockID(latest); id != milestoneBlockID {
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID=%s", latest.Index, id)
+		}
+	}
+
 	return nil
 }
 

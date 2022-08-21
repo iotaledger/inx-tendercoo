@@ -20,6 +20,7 @@ var _ abcitypes.Application = (*Coordinator)(nil)
 // ABCI return codes
 const (
 	CodeTypeOK uint32 = iota
+	CodeTypeSizeError
 	CodeTypeSyntaxError
 	CodeTypeStateError
 	CodeTypeNotSupportedError
@@ -52,13 +53,18 @@ func (c *Coordinator) Query(req abcitypes.RequestQuery) abcitypes.ResponseQuery 
 // When a non-zero Code is returned, the transactions is discarded and not being gossiped to other peers.
 // To prevent race conditions when CheckTx is calling during processing of a new block, the previous state must be used.
 func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
-	issuer, tx, err := UnmarshalTx(c.committee, req.Tx)
-	if err != nil {
-		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError, Log: err.Error()}
+	if len(req.Tx) > MaxTxBytes {
+		return abcitypes.ResponseCheckTx{Code: CodeTypeSizeError}
 	}
 
 	c.checkState.Lock()
 	defer c.checkState.Unlock()
+
+	issuer, tx, err := UnmarshalTx(c.committee, c.checkState.MilestoneIndex, req.Tx)
+	if err != nil {
+		return abcitypes.ResponseCheckTx{Code: CodeTypeSyntaxError, Log: err.Error()}
+	}
+
 	if err := tx.Apply(issuer, &c.checkState); err != nil {
 		return abcitypes.ResponseCheckTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
@@ -79,15 +85,20 @@ func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.Resp
 // A block can contain invalid transactions if it was issued by a malicious peer, as such validity must
 // be checked in a deterministic way.
 func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
-	issuer, tx, err := UnmarshalTx(c.committee, req.Tx)
+	if len(req.Tx) > MaxTxBytes {
+		return abcitypes.ResponseDeliverTx{Code: CodeTypeSizeError}
+	}
+
+	c.deliverState.Lock()
+	defer c.deliverState.Unlock()
+
+	issuer, tx, err := UnmarshalTx(c.committee, c.deliverState.MilestoneIndex, req.Tx)
 	if err != nil {
 		return abcitypes.ResponseDeliverTx{Code: CodeTypeSyntaxError, Log: err.Error()}
 	}
 
 	c.log.Debugw("DeliverTx", "tx", tx, "issuer", issuer)
 
-	c.deliverState.Lock()
-	defer c.deliverState.Unlock()
 	if err := tx.Apply(issuer, &c.deliverState); err != nil {
 		return abcitypes.ResponseDeliverTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
@@ -269,22 +280,29 @@ func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 }
 
 func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Milestone) error {
-	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members()); err != nil {
+	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members(ms.Index)); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	msg, err := buildMilestoneBlock(&ms)
+	block, err := buildMilestoneBlock(&ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
-	if _, err := msg.Serialize(serializer.DeSeriModePerformValidation, c.protoParamsFunc()); err != nil {
+	if _, err := block.Serialize(serializer.DeSeriModePerformValidation, c.protoParamsFunc()); err != nil {
 		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
-	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, msg)
+	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, block)
 	if err != nil {
-		return fmt.Errorf("emitting the block failed: %w", err)
+		// if SubmitBlock failed, check whether block is still present in the node, submitted by a different validator
+		if _, blockErr := c.inxClient.BlockMetadata(block.MustID()); blockErr != nil {
+			// only report an error, if we couldn't submit, and it is not present
+			return fmt.Errorf("submitting the milestone failed: %w", err)
+		}
+		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
+		// TODO: also report this as a metric
+	} else {
+		c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
 	}
-	c.log.Debugw("milestone issued", "blockID", latestMilestoneBlockID, "payload", msg.Payload)
 
 	return nil
 }

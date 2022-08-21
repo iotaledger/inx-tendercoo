@@ -12,6 +12,9 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
+// MaxTxBytes denotes the maximum size of a marshaled Tendermint transaction.
+const MaxTxBytes = 170
+
 var (
 	// ErrInvalidBlockID is returned when the transaction contains an invalid block ID.
 	ErrInvalidBlockID = errors.New("invalid block ID")
@@ -33,6 +36,7 @@ type Parent struct {
 	BlockID iotago.BlockID
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
@@ -60,6 +64,7 @@ type Proof struct {
 	Parent iotago.BlockID
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// proof must match the current milestone index
 	if p.Index != state.MilestoneIndex {
@@ -94,6 +99,7 @@ type PartialSignature struct {
 	Signature []byte
 }
 
+// Apply implements the corresponding method of Tx.
 func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// there must be a milestone essence to sign
 	if state.Milestone == nil {
@@ -161,12 +167,12 @@ func MarshalTx(c *Committee, tx Tx) ([]byte, error) {
 }
 
 // UnmarshalTx parses the wire-format message in b and returns the verified issuer as well as the message m.
-func UnmarshalTx(c *Committee, b []byte) (ed25519.PublicKey, Tx, error) {
+func UnmarshalTx(c *Committee, msIndex iotago.MilestoneIndex, b []byte) (ed25519.PublicKey, Tx, error) {
 	txRaw := &tendermint.TxRaw{}
 	if err := proto.Unmarshal(b, txRaw); err != nil {
 		return nil, nil, err
 	}
-	if err := c.VerifySingle(txRaw.GetEssence(), txRaw.GetPublicKey(), txRaw.GetSignature()); err != nil {
+	if err := c.VerifySingle(msIndex, txRaw.GetEssence(), txRaw.GetPublicKey(), txRaw.GetSignature()); err != nil {
 		return nil, nil, err
 	}
 

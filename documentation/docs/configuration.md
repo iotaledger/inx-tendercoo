@@ -67,40 +67,43 @@ Example:
 
 | Name                                  | Description                                                     | Type   | Default value |
 | ------------------------------------- | --------------------------------------------------------------- | ------ | ------------- |
-| interval                              | The interval in which milestones are issued                     | string | "5s"          |
-| maxTrackedBlocks                      | Maximum amount of blocks tracked by the milestone tip selection | int    | 10000         |
+| interval                              | Target interval in which milestones are issued                  | string | "5s"          |
+| maxTrackedBlocks                      | Maximum number of blocks tracked by the milestone tip selection | int    | 10000         |
 | [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object |               |
 | [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object |               |
 
 ### <a id="coordinator_tipsel"></a> Tipsel
 
-| Name                     | Description                                                                         | Type   | Default value |
-| ------------------------ | ----------------------------------------------------------------------------------- | ------ | ------------- |
-| maxTips                  | Maximum amount of tips returned                                                     | int    | 7             |
-| reducedConfirmationLimit | Only select tips that newly reference more than this limit compared to the best tip | float  | 0.5           |
-| timeout                  | Timeout after which tip selection is cancelled                                      | string | "100ms"       |
+| Name                     | Description                                                                                              | Type   | Default value |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- | ------ | ------------- |
+| maxTips                  | Maximum number of tips returned                                                                          | int    | 7             |
+| reducedConfirmationLimit | Stop selection, when tips reference less additional blocks than this fraction (compared to the best tip) | float  | 0.5           |
+| timeout                  | Timeout after which tip selection is canceled                                                            | string | "100ms"       |
 
 ### <a id="coordinator_tendermint"></a> Tendermint
 
-| Name                                             | Description                                            | Type   | Default value     |
-| ------------------------------------------------ | ------------------------------------------------------ | ------ | ----------------- |
-| bindAddress                                      | Binding address to listen for incoming connections     | string | "0.0.0.0:26656"   |
-| root                                             | Root directory for all Tendermint data                 | string | "tendermint"      |
-| logLevel                                         | Root directory for all Tendermint data                 | string | "info"            |
-| genesisTime                                      | Genesis time of the Tendermint blockchain in Unix time | int    | 0                 |
-| chainID                                          | Human-readable ID of the Tendermint blockchain         | string | "tendercoo"       |
-| [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                            | object |                   |
-| [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                           | object |                   |
-| validators                                       | Defines the Tendermint validators                      | object | see example below |
+| Name                                             | Description                                                                 | Type   | Default value     |
+| ------------------------------------------------ | --------------------------------------------------------------------------- | ------ | ----------------- |
+| bindAddress                                      | Bind address for incoming connections                                       | string | "0.0.0.0:26656"   |
+| consensusPrivateKey                              | Node's private key used for consensus                                       | string | ""                |
+| nodePrivateKey                                   | Node's private key used for P2P communication                               | string | ""                |
+| root                                             | Root folder to store config and database                                    | string | "tendermint"      |
+| logLevel                                         | Logging level of the Tendermint Core; cannot be lower than the global level | string | "info"            |
+| genesisTime                                      | Time the blockchain started or will start in Unix time using seconds        | int    | 0                 |
+| chainID                                          | Identifier of the blockchain; every chain must have a unique ID             | string | "tendercoo"       |
+| peers                                            | Addresses of the Tendermint nodes to connect to (ID@Host:Port)              | array  |                   |
+| [consensus](#coordinator_tendermint_consensus)   | Configuration for consensus                                                 | object |                   |
+| [prometheus](#coordinator_tendermint_prometheus) | Configuration for prometheus                                                | object |                   |
+| validators                                       | Set of validators                                                           | object | see example below |
 
 ### <a id="coordinator_tendermint_consensus"></a> Consensus
 
-| Name                      | Description                                                                  | Type    | Default value |
-| ------------------------- | ---------------------------------------------------------------------------- | ------- | ------------- |
-| createEmptyBlocks         | EmptyBlocks mode                                                             | boolean | false         |
-| createEmptyBlocksInterval | Possible interval between empty blocks                                       | string  | "0s"          |
-| blockInterval             | How long we wait after committing a block, before starting on the new height | string  | "1s"          |
-| skipBlockTimeout          | Make progress as soon as we have all the precommits                          | boolean | false         |
+| Name                      | Description                                                            | Type    | Default value |
+| ------------------------- | ---------------------------------------------------------------------- | ------- | ------------- |
+| createEmptyBlocks         | Whether empty blocks are created                                       | boolean | false         |
+| createEmptyBlocksInterval | Create empty blocks after waiting this long without receiving anything | string  | "0s"          |
+| blockInterval             | Delay between blocks                                                   | string  | "1s"          |
+| skipBlockTimeout          | Make progress as soon as we have all the precommits                    | boolean | false         |
 
 ### <a id="coordinator_tendermint_prometheus"></a> Prometheus
 
@@ -123,10 +126,13 @@ Example:
       },
       "tendermint": {
         "bindAddress": "0.0.0.0:26656",
+        "consensusPrivateKey": "",
+        "nodePrivateKey": "",
         "root": "tendermint",
         "logLevel": "info",
         "genesisTime": 0,
         "chainID": "tendercoo",
+        "peers": null,
         "consensus": {
           "createEmptyBlocks": false,
           "createEmptyBlocksInterval": "0s",

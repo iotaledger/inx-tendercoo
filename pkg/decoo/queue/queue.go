@@ -41,6 +41,7 @@ func New(capacity int, f func(any) error) *Queue {
 	q.timer.Stop() // make sure that the timer is not running
 	q.wg.Add(1)
 	go q.loop()
+
 	return q
 }
 
@@ -55,6 +56,7 @@ func (q *Queue) Stop() {
 func (q *Queue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
 	return q.size
 }
 
@@ -98,6 +100,7 @@ func (q *Queue) process() {
 			q.ring = q.ring.Next() // move to the back of the queue
 		}
 		q.timer.Reset(RetryInterval)
+
 		return
 	}
 
@@ -109,17 +112,15 @@ func (q *Queue) process() {
 	}
 }
 
-func (q *Queue) ringPop() any {
+func (q *Queue) ringPop() {
 	q.size--
-	val := q.ring.Value
 	n := q.ring.Next()
 	if n == q.ring {
 		q.ring = nil
-		return val
+		return
 	}
 	q.ring.Prev().Link(n)
 	q.ring = n
-	return val
 }
 
 func (q *Queue) ringPush(val any) {

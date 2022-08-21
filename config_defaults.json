@@ -16,10 +16,13 @@
     },
     "tendermint": {
       "bindAddress": "0.0.0.0:26656",
+      "consensusPrivateKey": "",
+      "nodePrivateKey": "",
       "root": "tendermint",
       "logLevel": "info",
       "genesisTime": 0,
       "chainID": "tendercoo",
+      "peers": null,
       "consensus": {
         "createEmptyBlocks": false,
         "createEmptyBlocksInterval": "0s",

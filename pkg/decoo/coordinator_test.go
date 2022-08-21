@@ -42,7 +42,7 @@ func TestSingleValidator(t *testing.T) {
 		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
-		require.NoError(t, c.Bootstrap(1, [32]byte{}, [32]byte{}))
+		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
 		abci.Application = c
 		require.NoError(t, c.Start(abci))
 
@@ -103,6 +103,10 @@ func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
 	return solid, nil
 }
 
+func (m *INXMock) BlockMetadata(iotago.BlockID) (*inxutils.BlockMetadata, error) {
+	panic("not implemented")
+}
+
 func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {
 	require.NotNil(m.t, ctx)
 
@@ -125,7 +129,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
-		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members()))
+		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members(ms.Index)))
 
 		// state must be valid
 		state, err := decoo.NewStateFromMilestone(ms)

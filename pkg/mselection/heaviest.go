@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
-
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -25,9 +24,9 @@ type HeaviestSelector struct {
 
 	// maximum amount of tips returned by SelectTips
 	maxTips int
-	// timeout after which SelectTips is cancelled
+	// timeout after which SelectTips is canceled
 	timeout time.Duration
-	// when the fraction of newly referenced blocks compared to the best is below this limit, SelectTips is cancelled
+	// when the fraction of newly referenced blocks compared to the best is below this limit, SelectTips is canceled
 	reducedConfirmationLimit float64
 
 	// map of all tracked blocks
@@ -77,6 +76,7 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 		reducedConfirmationLimit: reducedConfirmationLimit,
 	}
 	s.Reset()
+
 	return s
 }
 
@@ -106,13 +106,12 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 		return len(s.trackedBlocks)
 	}
 
-	var trackedParents []*trackedBlock
-	for _, parent := range meta.UnwrapParents() {
-		trackedParent := s.trackedBlocks[parent]
-		if trackedParent == nil {
-			continue
+	parents := meta.UnwrapParents()
+	trackedParents := make([]*trackedBlock, 0, len(parents))
+	for _, parent := range parents {
+		if block, ok := s.trackedBlocks[parent]; ok {
+			trackedParents = append(trackedParents, block)
 		}
-		trackedParents = append(trackedParents, trackedParent)
 	}
 
 	// compute the referenced blocks
@@ -217,6 +216,7 @@ func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 		tip := e.Value.(*trackedBlock)
 		result[tip.blockID] = tip
 	}
+
 	return &trackedBlocksList{blocks: result}
 }
 

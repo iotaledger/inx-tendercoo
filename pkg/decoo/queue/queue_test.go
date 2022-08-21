@@ -40,7 +40,7 @@ func TestOrder(t *testing.T) {
 	var a atomic.Uint32
 	q := queue.New(capacity, func(v any) error {
 		i := v.(uint32)
-		require.True(t, a.CAS(i-1, i))
+		require.True(t, a.CompareAndSwap(i-1, i))
 		return nil
 	})
 	defer q.Stop()
