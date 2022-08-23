@@ -24,16 +24,21 @@ This means that, as long as the pruning interval of the connected node is longer
 ## Config
 
 - Environment variables:
-  - `COO_PRV_KEY` specifies the Ed25519 private key (according to [RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032), i.e. any 32-byte string) for the current validator in hex-encoding. This private key is used to sign the produced milestones.
+  - `COO_PRV_KEY` specifies the private Ed25519 _Milestone Key_ (according to [RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032), i.e. any 32-byte string) for the current validator in hex-encoding. The key is used to sign the produced IOTA milestones.
 - Config file:
+  - `tendermint.bindAddress` specifies the bind address for incoming connections without a protocol prefix.
+  - `tendermint.consensusPrivateKey` specifies the private Ed25519 _Consensus Key_ in hex-encoding. The key is used to participate in the Tendermint consensus.
+  - `tenderming.nodePrivateKey` specifies the private Ed25519 Node Key_ in hex-encoding. The key is used to encrypt and sign Tendermint P2P communication.
   - `tendermint.root` specifies the root folder for Tendermint to store its config and keep its database.
   - `tendermint.logLevel` specifies the logging level of the Tendermint Core in ASCII. It cannot be lower than the global log level (e.g. a Tendermint log level of `DEBUG` does not add more verbosity when the global level is `INFO`).
   - `tendermint.genesisTime` specifies the time the Tendermint blockchain started or will start in Unix time using seconds. If validators are started before this time, they will sit idle until the time specified.
-  - `tendermint.chainID` specifies the identifier of the Tendermint blockchain. Every chain must have a unique ID. The ChainID must be less than 50 characters.
+  - `tendermint.chainID` specifies the identifier of the Tendermint blockchain. The ChainID must match the network ID configured in the node.
+  - `tendermint.peers` specifies the list of Tendermint nodes to connect to. As each plugin is usually run as one validator, this list should contain the addresses of all the validators. Each address is specified as `ID@host:port`. Here `ID` denotes the _Node ID_ of the corresponding Tendermint node, which corresponds to the hex-encoded first 20 bytes of the SHA-256 hash of the public _Node Key_. For example:
+    - The private Ed25519 key `0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae`
+    - corresponds to the ID `344713fc9f17906035de518e6efa4a2015c366bf`.
   - For each validator with `$NAME`:
     - `tendermint.validators.$NAME.pubKey` specifies the consensus key of the validator.
     - `tendermint.validators.$NAME.power` specifies the voting power of the validator.
-    - `tendermint.validators.$NAME.address` specifies the IP address and port of the validator.
 
 Additional information on running Tendermint in production can be found here: [Tendermint Core / Overview / Running in production](https://docs.tendermint.com/v0.34/tendermint-core/running-in-production.html)
 
