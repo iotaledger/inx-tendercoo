@@ -110,7 +110,7 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 
 // Bootstrap bootstraps the coordinator with the give state.
 func (c *Coordinator) Bootstrap(force bool, index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	// validate bootstrapping parameters against the latest milestone if not forced
+	// validateLatest bootstrapping parameters against the latest milestone if not forced
 	if !force {
 		if err := c.validateLatest(index, milestoneID, milestoneBlockID); err != nil {
 			return err
@@ -208,13 +208,13 @@ func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneI
 	// assure that we do not re-bootstrap the network
 	if latest != nil {
 		if latest.Index != index-1 {
-			return fmt.Errorf("latest milestone %d is incompatible: Index=%d", latest.Index, latest.Index)
+			return fmt.Errorf("latest milestone %d is incompatible: Index: expected=%d actual=%d", latest.Index, index-1, latest.Index)
 		}
 		if id := latest.MustID(); id != milestoneID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID=%s", latest.Index, id)
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID: expected=%s actual=%s", latest.Index, milestoneID, id)
 		}
 		if id := MilestoneBlockID(latest); id != milestoneBlockID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID=%s", latest.Index, id)
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID: expected=%s actual=%s", latest.Index, milestoneBlockID, id)
 		}
 	}
 
