@@ -15,6 +15,7 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 
 	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/serializer/v2"
 	inxutils "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/builder"
@@ -168,6 +169,10 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 	for _, parent := range block.Parents {
 		require.Contains(m.t, m.solidBlocks, parent)
 	}
+
+	// validate block
+	_, err := block.Serialize(serializer.DeSeriModePerformValidation, nil)
+	require.NoError(m.t, err)
 
 	// handle milestones
 	if ms, ok := block.Payload.(*iotago.Milestone); ok {
