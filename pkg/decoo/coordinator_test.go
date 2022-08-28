@@ -9,14 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/hive.go/core/logger"
-	inxutils "github.com/iotaledger/inx/go"
-	iotago "github.com/iotaledger/iota.go/v3"
-	"github.com/iotaledger/iota.go/v3/builder"
 	"github.com/stretchr/testify/require"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
+
+	"github.com/iotaledger/hive.go/core/logger"
+	inxutils "github.com/iotaledger/inx/go"
+	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/builder"
 )
 
 const (
