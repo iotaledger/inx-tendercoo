@@ -8,14 +8,14 @@ require (
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-beta.1
 	github.com/iotaledger/inx-app v1.0.0-beta.9
 	github.com/iotaledger/inx/go v1.0.0-beta.5
-	github.com/iotaledger/iota.go/v3 v3.0.0-beta.6
+	github.com/iotaledger/iota.go/v3 v3.0.0-beta.7
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
 	github.com/tendermint/tendermint v0.34.20
 	go.uber.org/atomic v1.10.0
 	go.uber.org/dig v1.15.0
-	go.uber.org/zap v1.22.0
-	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	go.uber.org/zap v1.23.0
+	golang.org/x/crypto v0.0.0-20220826181053-bd7e27e6170d
 	google.golang.org/protobuf v1.28.1
 )
 
