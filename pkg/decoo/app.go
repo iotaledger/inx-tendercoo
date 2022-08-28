@@ -130,17 +130,17 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 		// if enough parents have been confirmed, create the milestone essence
 		if parentWeight > c.committee.F() {
-			// sort the parents, first by IssuerCount and then by BlockID
-			sort.Slice(parents, func(i, j int) bool {
-				a, b := parents[i], parents[j]
-				cmp := c.deliverState.IssuerCountByParent[a] - c.deliverState.IssuerCountByParent[b]
-				if cmp == 0 {
-					return bytes.Compare(a[:], b[:]) < 0
-				}
-				return cmp < 0
-			})
 			// make sure that we have at most BlockMaxParents-1 parents
 			if len(parents) > iotago.BlockMaxParents-1 {
+				// sort the parents, first by IssuerCount and then by BlockID
+				sort.Slice(parents, func(i, j int) bool {
+					a, b := parents[i], parents[j]
+					cmp := c.deliverState.IssuerCountByParent[a] - c.deliverState.IssuerCountByParent[b]
+					if cmp == 0 {
+						return bytes.Compare(a[:], b[:]) < 0
+					}
+					return cmp < 0
+				})
 				parents = parents[:iotago.BlockMaxParents-1]
 			}
 			// add the last milestone block ID and sort
