@@ -40,7 +40,7 @@ func TestSingleValidator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
-		abci.Add(c)
+		abci.AddCoordinator(c)
 		require.NoError(t, c.Start(abci))
 
 		for i := uint32(1); i < 10; i++ {
@@ -59,7 +59,7 @@ func TestSingleValidator(t *testing.T) {
 		ms, err := inx.LatestMilestone()
 		require.NoError(t, err)
 		require.NoError(t, c.InitState(ms))
-		abci.Add(c)
+		abci.AddCoordinator(c)
 		abci.Replay()
 		require.NoError(t, c.Start(abci))
 
@@ -86,7 +86,7 @@ func TestManyValidator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
-		abci.Add(c)
+		abci.AddCoordinator(c)
 		require.NoError(t, c.Start(abci))
 		committee.f = N - 1 // require each node to send a proof and parent
 	}
@@ -263,7 +263,7 @@ type ABCIMock struct {
 	Txs  []tmtypes.Tx
 }
 
-func (m *ABCIMock) Add(app *Coordinator) {
+func (m *ABCIMock) AddCoordinator(app *Coordinator) {
 	m.Lock()
 	defer m.Unlock()
 
