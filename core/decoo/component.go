@@ -52,6 +52,8 @@ const (
 
 	// EnvMilestonePrivateKey defines the name of the environment variable containing the key used for signing milestones.
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
+	// SyncRetryInterval defines the time to wait before retrying an un-synced node
+	SyncRetryInterval = 2 * time.Second
 
 	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
@@ -386,6 +388,13 @@ func coordinatorLoop(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
+			// check that the node is synced
+			if !deps.NodeBridge.IsNodeSynced() {
+				CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
+				timer.Reset(SyncRetryInterval)
+				continue
+			}
+
 			CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
