@@ -13,7 +13,7 @@ type ParametersDefinition struct {
 
 	TipSel struct {
 		MaxTips                  int           `default:"7" usage:"maximum number of tips returned"`
-		ReducedConfirmationLimit float64       `default:"0.5" usage:"stop selection, when tips reference less additional blocks than this fraction (compared to the best tip)"`
+		ReducedConfirmationLimit float64       `default:"0.7" usage:"stop selection, when tips reference less additional blocks than this fraction (compared to the best tip)"`
 		Timeout                  time.Duration `default:"100ms" usage:"timeout after which tip selection is canceled"`
 	} `name:"tipsel"`
 
