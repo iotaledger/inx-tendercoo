@@ -25,7 +25,7 @@ type PeerID = types.Byte32
 // Committee defines a committee of signers.
 type Committee struct {
 	privateKey ed25519.PrivateKey
-	n, t       int
+	n, f, t    int
 	manager    KeyManager
 }
 
@@ -37,7 +37,7 @@ func IDFromPublicKey(publicKey ed25519.PublicKey) PeerID {
 // NewCommitteeFromManager creates a new committee.
 // The parameter n denotes the total number of committee members and t denotes the signature threshold.
 func NewCommitteeFromManager(privateKey ed25519.PrivateKey, n int, t int, manager KeyManager) *Committee {
-	return &Committee{privateKey, n, t, manager}
+	return &Committee{privateKey, n, n / 3, t, manager}
 }
 
 // NewCommittee creates a new committee.
@@ -64,6 +64,9 @@ func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey
 
 // N returns the number of members in the committee.
 func (v *Committee) N() int { return v.n }
+
+// F returns the number of members in the committee.
+func (v *Committee) F() int { return v.f }
 
 // T returns the threshold t required for valid signatures.
 func (v *Committee) T() int { return v.t }

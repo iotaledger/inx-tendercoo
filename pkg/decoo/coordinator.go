@@ -83,7 +83,7 @@ type Coordinator struct {
 // New creates a new Coordinator.
 func New(committee *Committee, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be space for at least one honest parent in each milestone
-	if committee.N()/3+1 > iotago.BlockMaxParents-1 {
+	if committee.F()+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
 	// there must be space for one signature per committee member
