@@ -49,45 +49,47 @@ Each validator proposes one tip to the consensus mechanism for selection as a mi
 ### Heaviest Tip Heuristic
 
 #### Global
+- $B$ &mdash; considered blocks
+- $R_j\ \forall j \in B$ &mdash; blocks referenced by block $j$
+- $T$ &mdash; tip set
 
-- B &ndash; considered blocks
-- Rⱼ ∀j∈B &ndash; blocks referenced by block j
-- T &ndash; tip set
--
-#### OnBlockSolid(𝑖)
+
+#### $\texttt{OnBlockSolid}(b)$
 
 Input:
-- 𝑖 &ndash; newly solid and valid block
-
+- $b$ &mdash; newly solid and valid block
+ 
 Steps:
-- B←B∪{𝑖}
-- compute and store the set of referenced blocks Rᵢ←{𝑖}∪⋃j∈parents(𝑖)∩BRⱼ
-- update the tip set T←(T∪{𝑖})∖parents(𝑖)
+- $B \gets B \cup \{b\}$
+- compute and store the set of referenced blocks $R_b \gets \{b\} \cup \bigcup_{j \in \operatorname{parents}(b)\cap B} R_j$
+- update the tip set $T \gets (T \cup \{b\}) \setminus \operatorname{parents}(b)$
 
-#### Select()
+
+#### $\texttt{Select}()$
 
 Output:
-- S &ndash; subset of selected tips
+- $S$ &mdash; subset of selected tips
 
 Steps:
-- S←∅
-- while |S|< `MaxTips`
-  - t←argmaxj∈T|Rⱼ|
-  - if |Rₜ|/argmaxj∈S|Rⱼ| < `ReducedConfirmationLimit`:
+
+- $S \gets \emptyset$
+- while $|S| <$ `MaxTips`
+  - $t \gets \operatorname{arg\,max}_{j \in T} |R_j|$
+  - if $\frac{|R_t|}{\operatorname{arg\,max}_{j \in S} |R_j|}$ < `ReducedConfirmationLimit`:
     - break
-  - For each j∈B:
-    - Rⱼ←Rⱼ∖Rₜ
-  - S←S∪{t}
-- reset tracked blocks B←∅ and all Rⱼ
-- return S
+  - For each $j \in B$:
+    - $R_j \gets R_j \setminus R_t$
+  - $S \gets S \cup \{t\}$ 
+- reset tracked blocks $B \gets \emptyset$ and all $R_j$
+- return $S$ 
 
 #### Implementation Details
 
-- Each block b∈B is assigned a unique integer index.
-- The sets Rⱼ are represented as bit vectors, with the bit Rⱼ[i] denoting whether the block with index i is contained in the set.
-- While bit vectors allow for very efficient computations of union and difference, they require a lot of space: O(|B|²). To prevent this from getting out of hand, the set B needs to be reset after each Select. (With this step we effectively lose track of all the blocks which are not referenced by S. However, this becomes less relevant the more blocks are referenced with one Select.)
-- To further limit the size of B, the creation of the next milestone must be prematurely triggered (and thus also a call of Select) when B> MaxTrackedBlocks
-- Note: Select() chooses the tips using a greedy heuristic. In general, there can be another set of tips S′ of the same size that reference more blocks than S.
+- Each block $b \in B$ is assigned a unique integer index.
+- The sets $R_j$ are represented as bit vectors, with the bit $R_j[i]$ denoting whether the block with index $i$ is contained in the set.
+- While bit vectors allow for very efficient computations of union and difference, they require a lot of space: $\mathcal{O}(|B|^2)$. To prevent this from getting out of hand, the set $B$ needs to be reset after each $\texttt{Select}$. (With this step we effectively lose track of all the blocks which are not referenced by $S$. However, this becomes less relevant the more blocks are referenced with one $\texttt{Select}$.)
+- To further limit the size of $B$, the creation of the next milestone must be prematurely triggered (and thus also a call of $\texttt{Select}$) when $B >$ `MaxTrackedBlocks`
+- Note: $\texttt{Select}()$ chooses the tips using a greedy heuristic. In general, there can be another set of tips $S'$ of the same size that reference more blocks than $S$.
 
 #### Parameters:
 - `MaxTrackedBlocks` specifies the maximum number of blocks tracked by the milestone tip selection.
