@@ -65,7 +65,7 @@ func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey
 // N returns the number of members in the committee.
 func (v *Committee) N() int { return v.n }
 
-// F returns the number of members in the committee.
+// F returns the number of Byzantine members in the committee.
 func (v *Committee) F() int { return v.f }
 
 // T returns the threshold t required for valid signatures.
