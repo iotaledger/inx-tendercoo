@@ -31,8 +31,16 @@ var (
 
 func initialize() error {
 	if bootstrap {
-		// initialize with the provided dummy values and trigger newMilestoneSignal to start the loop
-		processMilestoneInfo(milestoneInfo{startIndex - 1, time.Now(), startMilestoneBlockID})
+		confirmedMilestone.Lock()
+		defer confirmedMilestone.Unlock()
+
+		// initialized the latest milestone with the provided dummy values
+		confirmedMilestone.index = startIndex - 1
+		confirmedMilestone.timestamp = time.Now()
+		confirmedMilestone.milestoneBlockID = startMilestoneBlockID
+		// trigger newMilestoneSignal to start the loop and issue the first milestone
+		newMilestoneSignal <- confirmedMilestone.milestoneInfo
+
 		return nil
 	}
 
@@ -41,8 +49,9 @@ func initialize() error {
 	if err != nil {
 		return fmt.Errorf("failed to query latest milestone: %w", err)
 	}
-	// trigger newMilestoneSignal to start the loop
+	// trigger newMilestoneSignal to start the loop and issue the next milestone
 	processConfirmedMilestone(milestone.Milestone)
+
 	return nil
 }
 
@@ -107,23 +116,16 @@ func coordinatorLoop(ctx context.Context) {
 }
 
 func processConfirmedMilestone(milestone *iotago.Milestone) {
-	info := milestoneInfo{
-		index:            milestone.Index,
-		timestamp:        time.Unix(int64(milestone.Timestamp), 0),
-		milestoneBlockID: decoo.MilestoneBlockID(milestone),
-	}
-	processMilestoneInfo(info)
-}
-
-func processMilestoneInfo(info milestoneInfo) {
 	confirmedMilestone.Lock()
 	defer confirmedMilestone.Unlock()
 
-	if info.index <= confirmedMilestone.index {
+	if milestone.Index <= confirmedMilestone.index {
 		return
 	}
 
-	confirmedMilestone.milestoneInfo = info
+	confirmedMilestone.index = milestone.Index
+	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
+	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
 	newMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
