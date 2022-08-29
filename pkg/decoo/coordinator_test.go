@@ -1,8 +1,10 @@
-package decoo_test
+package decoo
 
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -13,21 +15,15 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 
 	"github.com/iotaledger/hive.go/core/logger"
-	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
+	"github.com/iotaledger/hive.go/serializer/v2"
 	inxutils "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/builder"
 )
 
 const (
-	waitFor = time.Second
+	waitFor = 2 * time.Second
 	tick    = 10 * time.Millisecond
-)
-
-var (
-	seed      = [ed25519.SeedSize]byte{42}
-	private   = ed25519.NewKeyFromSeed(seed[:])
-	public    = private.Public().(ed25519.PublicKey)
-	committee = decoo.NewCommittee(private, public)
 )
 
 func TestSingleValidator(t *testing.T) {
@@ -37,13 +33,15 @@ func TestSingleValidator(t *testing.T) {
 		blockSolidCallbacks: map[iotago.BlockID]func(*inxutils.BlockMetadata){},
 	}
 	abci := &ABCIMock{}
+	privateKeys, publicKeys := generateTestKeys(1)
+	committee := NewCommittee(privateKeys[0], publicKeys...)
 
 	t.Run("bootstrap", func(t *testing.T) {
-		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
+		c, err := New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
 		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
-		abci.Application = c
+		abci.AddCoordinator(c)
 		require.NoError(t, c.Start(abci))
 
 		for i := uint32(1); i < 10; i++ {
@@ -55,14 +53,14 @@ func TestSingleValidator(t *testing.T) {
 	})
 
 	t.Run("resume", func(t *testing.T) {
-		c, err := decoo.New(committee, inx, inx, logger.NewExampleLogger(""))
+		c, err := New(committee, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
 		// init from state and replay missing transactions
 		ms, err := inx.LatestMilestone()
 		require.NoError(t, err)
 		require.NoError(t, c.InitState(ms))
-		abci.Application = c
+		abci.AddCoordinator(c)
 		abci.Replay()
 		require.NoError(t, c.Start(abci))
 
@@ -71,6 +69,65 @@ func TestSingleValidator(t *testing.T) {
 		require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == index }, waitFor, tick)
 		require.NoError(t, c.Stop())
 	})
+}
+
+func TestManyValidator(t *testing.T) {
+	const N = 10
+	inx := &INXMock{
+		t:                   t,
+		solidBlocks:         map[iotago.BlockID]struct{}{iotago.EmptyBlockID(): {}},
+		blockSolidCallbacks: map[iotago.BlockID]func(*inxutils.BlockMetadata){},
+	}
+	abci := &ABCIMock{}
+
+	privateKeys, publicKeys := generateTestKeys(N)
+	for i := 0; i < N; i++ {
+		committee := NewCommittee(privateKeys[i], publicKeys...)
+		c, err := New(committee, inx, inx, logger.NewExampleLogger(fmt.Sprintf("coo-%d", i)))
+		require.NoError(t, err)
+
+		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
+		abci.AddCoordinator(c)
+		require.NoError(t, c.Start(abci))
+		committee.f = N - 1 // require each node to send a proof and parent
+	}
+
+	// there should be no milestones yet
+	require.EqualValues(t, 0, inx.LatestMilestoneIndex())
+
+	for i, c := range abci.Apps {
+		// create a new parent per coordinator
+		payload := &iotago.TaggedData{Data: make([]byte, binary.MaxVarintLen64)}
+		binary.PutVarint(payload.Data, int64(i))
+		parent, err := builder.NewBlockBuilder().Payload(payload).Parents(iotago.BlockIDs{inx.LatestMilestoneBlockID()}).Build()
+		require.NoError(t, err)
+
+		// submit the block and propose as parent
+		parentID, err := inx.SubmitBlock(context.Background(), parent)
+		require.NoError(t, err)
+		require.NoError(t, c.ProposeParent(1, parentID))
+	}
+
+	// check that a new milestone gets issued
+	require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == 1 }, waitFor, tick)
+
+	// shut everything down
+	for _, c := range abci.Apps {
+		require.NoError(t, c.Stop())
+	}
+}
+
+func generateTestKeys(n int) (privateKeys []ed25519.PrivateKey, publicKeys []ed25519.PublicKey) {
+	for i := 0; i < n; i++ {
+		var seed [ed25519.SeedSize]byte
+		binary.PutVarint(seed[:], int64(i))
+		private := ed25519.NewKeyFromSeed(seed[:])
+
+		privateKeys = append(privateKeys, private)
+		publicKeys = append(publicKeys, private.Public().(ed25519.PublicKey))
+	}
+
+	return privateKeys, publicKeys
 }
 
 type INXMock struct {
@@ -121,6 +178,10 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Contains(m.t, m.solidBlocks, parent)
 	}
 
+	// validate the block
+	_, err := block.Serialize(serializer.DeSeriModePerformValidation, nil)
+	require.NoError(m.t, err)
+
 	// handle milestones
 	if ms, ok := block.Payload.(*iotago.Milestone); ok {
 		// milestone must be valid
@@ -129,10 +190,10 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
-		require.NoError(m.t, ms.VerifySignatures(committee.N(), committee.Members(ms.Index)))
+		// TODO: validate the milestone signatures
 
 		// state must be valid
-		state, err := decoo.NewStateFromMilestone(ms)
+		state, err := NewStateFromMilestone(ms)
 		require.NoError(m.t, err)
 		require.Equal(m.t, ms.Index, state.MilestoneIndex)
 		require.Equal(m.t, m.latestMilestoneID(), state.LastMilestoneID)
@@ -211,9 +272,16 @@ func (m *INXMock) latestMilestoneID() iotago.MilestoneID {
 
 type ABCIMock struct {
 	sync.Mutex
-	abcitypes.Application
 
-	Txs []tmtypes.Tx
+	Apps []*Coordinator
+	Txs  []tmtypes.Tx
+}
+
+func (m *ABCIMock) AddCoordinator(app *Coordinator) {
+	m.Lock()
+	defer m.Unlock()
+
+	m.Apps = append(m.Apps, app)
 }
 
 func (m *ABCIMock) BroadcastTxSync(ctx context.Context, tx tmtypes.Tx) (*tmcore.ResultBroadcastTx, error) {
@@ -226,11 +294,13 @@ func (m *ABCIMock) BroadcastTxSync(ctx context.Context, tx tmtypes.Tx) (*tmcore.
 	default:
 	}
 
-	// trigger a new block containing that transaction
-	m.BeginBlock(abcitypes.RequestBeginBlock{})
-	m.DeliverTx(abcitypes.RequestDeliverTx{Tx: tx})
-	m.EndBlock(abcitypes.RequestEndBlock{})
-	m.Commit()
+	// trigger a new block containing that transaction on every application
+	for _, app := range m.Apps {
+		app.BeginBlock(abcitypes.RequestBeginBlock{})
+		app.DeliverTx(abcitypes.RequestDeliverTx{Tx: tx})
+		app.EndBlock(abcitypes.RequestEndBlock{})
+		app.Commit()
+	}
 
 	m.Txs = append(m.Txs, tx)
 	return &tmcore.ResultBroadcastTx{}, nil
@@ -240,11 +310,13 @@ func (m *ABCIMock) Replay() {
 	m.Lock()
 	defer m.Unlock()
 
-	resp := m.Info(abcitypes.RequestInfo{})
-	for i := resp.LastBlockHeight; i < int64(len(m.Txs)); i++ {
-		m.BeginBlock(abcitypes.RequestBeginBlock{})
-		m.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txs[i]})
-		m.EndBlock(abcitypes.RequestEndBlock{})
-		m.Commit()
+	for _, app := range m.Apps {
+		resp := app.Info(abcitypes.RequestInfo{})
+		for i := resp.LastBlockHeight; i < int64(len(m.Txs)); i++ {
+			app.BeginBlock(abcitypes.RequestBeginBlock{})
+			app.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txs[i]})
+			app.EndBlock(abcitypes.RequestEndBlock{})
+			app.Commit()
+		}
 	}
 }

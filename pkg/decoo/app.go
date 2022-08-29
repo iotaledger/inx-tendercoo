@@ -1,6 +1,7 @@
 package decoo
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -117,10 +118,11 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 		// collect parents that have sufficient proofs
 		parentWeight := 0
 		var parents iotago.BlockIDs
-		for blockID, preMsProofs := range c.deliverState.ProofIssuersByBlockID {
-			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(preMsProofs) > c.committee.N()/3 {
+		for blockID, proofs := range c.deliverState.ProofIssuersByBlockID {
+			// a parent is considered valid, if at least one honest peer issued a proof for it
+			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(proofs) > c.committee.F() {
 				parentWeight += c.deliverState.IssuerCountByParent[blockID]
-				// the last milestone block ID will be added later anyway
+				// the last milestone block ID will be added later anyway, so ignore it here
 				if blockID != c.deliverState.LastMilestoneBlockID {
 					parents = append(parents, blockID)
 				}
@@ -128,11 +130,21 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 		}
 
 		// if enough parents have been confirmed, create the milestone essence
-		if parentWeight > c.committee.N()/3 {
+		if parentWeight > c.committee.F() {
+			// make sure that we have at most BlockMaxParents-1 parents
 			if len(parents) > iotago.BlockMaxParents-1 {
+				// sort the parents, first by IssuerCount and then by BlockID
+				sort.Slice(parents, func(i, j int) bool {
+					a, b := parents[i], parents[j]
+					cmp := c.deliverState.IssuerCountByParent[a] - c.deliverState.IssuerCountByParent[b]
+					if cmp == 0 {
+						return bytes.Compare(a[:], b[:]) < 0
+					}
+					return cmp < 0
+				})
 				parents = parents[:iotago.BlockMaxParents-1]
 			}
-			// always add the previous milestone as a parent
+			// add the last milestone block ID and sort
 			parents = append(parents, c.deliverState.LastMilestoneBlockID)
 			parents = parents.RemoveDupsAndSort()
 

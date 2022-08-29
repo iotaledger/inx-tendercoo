@@ -25,7 +25,7 @@ type PeerID = types.Byte32
 // Committee defines a committee of signers.
 type Committee struct {
 	privateKey ed25519.PrivateKey
-	n, t       int
+	n, f, t    int
 	manager    KeyManager
 }
 
@@ -37,14 +37,14 @@ func IDFromPublicKey(publicKey ed25519.PublicKey) PeerID {
 // NewCommitteeFromManager creates a new committee.
 // The parameter n denotes the total number of committee members and t denotes the signature threshold.
 func NewCommitteeFromManager(privateKey ed25519.PrivateKey, n int, t int, manager KeyManager) *Committee {
-	return &Committee{privateKey, n, t, manager}
+	return &Committee{privateKey, n, maxFaulty(n), t, manager}
 }
 
 // NewCommittee creates a new committee.
 // The function panics, if privateKey does not match a publicKey or when publicKeys contains duplicates.
 func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey) *Committee {
 	n := len(publicKeys)
-	t := n*2/3 + 1
+	t := n - maxFaulty(n)
 
 	keySet := make(singleKeyRange, n)
 	for _, member := range publicKeys {
@@ -65,7 +65,10 @@ func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey
 // N returns the number of members in the committee.
 func (v *Committee) N() int { return v.n }
 
-// T returns the threshold t required for valid signatures.
+// F returns the number of Byzantine members in the committee.
+func (v *Committee) F() int { return v.f }
+
+// T returns the threshold t of valid signatures that are required.
 func (v *Committee) T() int { return v.t }
 
 // PublicKey returns the public key of the local member.
@@ -101,6 +104,13 @@ func (v *Committee) VerifySingle(msIndex iotago.MilestoneIndex, message []byte, 
 		return ErrInvalidSignature
 	}
 	return nil
+}
+
+func maxFaulty(n int) int {
+	if n <= 0 {
+		panic("Committee: at least one member required")
+	}
+	return (n - 1) / 3
 }
 
 type singleKeyRange iotago.MilestonePublicKeySet

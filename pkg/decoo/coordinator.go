@@ -83,7 +83,7 @@ type Coordinator struct {
 // New creates a new Coordinator.
 func New(committee *Committee, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be space for at least one honest parent in each milestone
-	if committee.N()/3+1 > iotago.BlockMaxParents-1 {
+	if committee.F()+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
 	}
 	// there must be space for one signature per committee member
@@ -102,7 +102,7 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 		protoParamsFunc:              inxClient.ProtocolParameters,
 		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
 	}
-	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature
+	// no need to store more Tendermint txs than what is sent in one epoch, i.e. 1 parent, n proofs, 1 signature
 	maxTransactions := 1 + committee.N() + 1
 	c.broadcastQueue = queue.New(maxTransactions, func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil
