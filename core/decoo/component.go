@@ -4,11 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -90,12 +87,6 @@ var (
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
-
-	confirmedMilestone struct {
-		sync.Mutex
-		milestoneInfo
-	}
-	newMilestoneSignal chan milestoneInfo
 
 	// closures
 	onBlockSolid                *events.Closure
@@ -265,17 +256,10 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 
 func configure() error {
 	newMilestoneSignal = make(chan milestoneInfo, 1)
-	if bootstrap {
-		// initialized the latest milestone with the provided dummy values
-		confirmedMilestone.index = startIndex - 1
-		confirmedMilestone.timestamp = time.Now()
-		confirmedMilestone.milestoneBlockID = startMilestoneBlockID
-		// trigger issuing a milestone for that index
-		newMilestoneSignal <- confirmedMilestone.milestoneInfo
-	}
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
+		// ignore blocks that are too old
 		if metadata.GetShouldReattach() {
 			return
 		}
@@ -283,24 +267,18 @@ func configure() error {
 		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
 			CoreComponent.LogInfo("trigger next milestone preemptively")
-			// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
-			if confirmedMilestone.TryLock() {
-				defer confirmedMilestone.Unlock()
-
-				// if a new milestone has already been received, there is no need to preemptively trigger it
-				select {
-				case newMilestoneSignal <- confirmedMilestone.milestoneInfo:
-				default:
-				}
-			}
+			triggerNextMilestone()
 		}
 	})
 
-	// after a new milestone is confirmed, restart the selector and process the new milestone
+	// pass all new confirmed milestones to the coordinator loop
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
+		// ignore new confirmed milestones during syncing
+		if !deps.NodeBridge.IsNodeSynced() {
+			return
+		}
 		CoreComponent.LogInfof("new confirmed milestone: %d", milestone.Milestone.Index)
-		// process the milestone for the coordinator
-		processMilestone(milestone.Milestone)
+		processConfirmedMilestone(milestone.Milestone)
 	})
 
 	return nil
@@ -338,6 +316,12 @@ func run() error {
 
 	if err := CoreComponent.Daemon().BackgroundWorker(decooWorkerName, func(ctx context.Context) {
 		CoreComponent.LogInfo("Starting " + decooWorkerName + " ...")
+
+		if err := initialize(); err != nil {
+			CoreComponent.LogPanicf("failed to initialize: %s", err)
+		}
+
+		// it is now safe to attach the events
 		attachEvents()
 		defer detachEvents()
 
@@ -362,83 +346,6 @@ func run() error {
 	return nil
 }
 
-type milestoneInfo struct {
-	index            uint32
-	timestamp        time.Time
-	milestoneBlockID iotago.BlockID
-}
-
-func coordinatorLoop(ctx context.Context) {
-	// if we are not bootstrapping, we need to make sure that the latest stored milestone gets processed
-	if !bootstrap {
-		go func() {
-			milestone, err := deps.NodeBridge.LatestMilestone()
-			if err != nil {
-				CoreComponent.LogWarnf("failed to read latest milestone: %s", err)
-			} else {
-				// processing will trigger newMilestoneSignal to start the loop
-				processMilestone(milestone.Milestone)
-			}
-		}()
-	}
-
-	timer := time.NewTimer(math.MaxInt64)
-	defer timer.Stop()
-	var info milestoneInfo
-	for {
-		select {
-		case <-timer.C: // propose a parent for the next milestone
-			// check that the node is synced
-			if !deps.NodeBridge.IsNodeSynced() {
-				CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
-				timer.Reset(SyncRetryInterval)
-				continue
-			}
-
-			CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
-			tips, err := deps.Selector.SelectTips(1)
-			if err != nil {
-				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
-				// use the previous milestone block as fallback
-				tips = iotago.BlockIDs{info.milestoneBlockID}
-			}
-			// make sure that at least one second has passed since the last milestone
-			if d := time.Until(info.timestamp.Add(time.Second)); d > 0 {
-				time.Sleep(d)
-			}
-			// propose a random tip as parent for the next milestone
-			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
-				CoreComponent.LogWarnf("failed to propose parent: %s", err)
-			}
-
-		case info = <-newMilestoneSignal: // we have received a new milestone without proposing a parent
-			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
-			deps.Selector.Reset()
-			// the timer has not yet fired, so we need to stop it before resetting
-			if !timer.Stop() {
-				<-timer.C
-			}
-			// reset the timer to match the interval since the lasts milestone
-			timer.Reset(remainingInterval(info.timestamp))
-
-			continue
-
-		case <-ctx.Done(): // end the loop
-			return
-		}
-
-		// when this select is reach, the timer has fired and a milestone was proposed
-		select {
-		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
-			// reset the timer to match the interval since the lasts milestone
-			timer.Reset(remainingInterval(info.timestamp))
-
-		case <-ctx.Done(): // end the loop
-			return
-		}
-	}
-}
-
 func attachEvents() {
 	deps.TangleListener.Events.BlockSolid.Hook(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Hook(onConfirmedMilestoneChanged)
@@ -447,20 +354,6 @@ func attachEvents() {
 func detachEvents() {
 	deps.TangleListener.Events.BlockSolid.Detach(onBlockSolid)
 	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
-}
-
-func processMilestone(milestone *iotago.Milestone) {
-	confirmedMilestone.Lock()
-	defer confirmedMilestone.Unlock()
-
-	if milestone.Index < confirmedMilestone.index+1 {
-		return
-	}
-
-	confirmedMilestone.index = milestone.Index
-	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
-	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
-	newMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
 // privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
@@ -487,12 +380,4 @@ func privateKeyFromString(s string) (ed25519.PrivateKey, error) {
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
 	return !os.IsNotExist(err)
-}
-
-func remainingInterval(ts time.Time) time.Duration {
-	d := Parameters.Interval - time.Since(ts)
-	if d < 0 {
-		d = 0
-	}
-	return d
 }
