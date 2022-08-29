@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
