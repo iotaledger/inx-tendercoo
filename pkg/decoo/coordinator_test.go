@@ -33,8 +33,8 @@ func TestSingleValidator(t *testing.T) {
 		blockSolidCallbacks: map[iotago.BlockID]func(*inxutils.BlockMetadata){},
 	}
 	abci := &ABCIMock{}
-	privates, publics := generateTestKeys(1)
-	committee := NewCommittee(privates[0], publics...)
+	privateKeys, publicKeys := generateTestKeys(1)
+	committee := NewCommittee(privateKeys[0], publicKeys...)
 
 	t.Run("bootstrap", func(t *testing.T) {
 		c, err := New(committee, inx, inx, logger.NewExampleLogger(""))
@@ -72,6 +72,7 @@ func TestSingleValidator(t *testing.T) {
 }
 
 func TestManyValidator(t *testing.T) {
+	const N = 10
 	inx := &INXMock{
 		t:                   t,
 		solidBlocks:         map[iotago.BlockID]struct{}{iotago.EmptyBlockID(): {}},
@@ -79,10 +80,9 @@ func TestManyValidator(t *testing.T) {
 	}
 	abci := &ABCIMock{}
 
-	const N = 10
-	privates, publics := generateTestKeys(N)
+	privateKeys, publicKeys := generateTestKeys(N)
 	for i := 0; i < N; i++ {
-		committee := NewCommittee(privates[i], publics...)
+		committee := NewCommittee(privateKeys[i], publicKeys...)
 		c, err := New(committee, inx, inx, logger.NewExampleLogger(fmt.Sprintf("coo-%d", i)))
 		require.NoError(t, err)
 
@@ -92,34 +92,42 @@ func TestManyValidator(t *testing.T) {
 		committee.f = N - 1 // require each node to send a proof and parent
 	}
 
+	// there should be no milestones yet
+	require.EqualValues(t, 0, inx.LatestMilestoneIndex())
+
 	for i, c := range abci.Apps {
+		// create a new parent per coordinator
 		payload := &iotago.TaggedData{Data: make([]byte, binary.MaxVarintLen64)}
 		binary.PutVarint(payload.Data, int64(i))
-		block, err := builder.NewBlockBuilder().Payload(payload).Parents(iotago.BlockIDs{inx.LatestMilestoneBlockID()}).ProofOfWork(context.Background(), nil, 0.01, 1).Build()
+		parent, err := builder.NewBlockBuilder().Payload(payload).Parents(iotago.BlockIDs{inx.LatestMilestoneBlockID()}).Build()
 		require.NoError(t, err)
 
-		id, err := inx.SubmitBlock(context.Background(), block)
+		// submit the block and propose as parent
+		parentID, err := inx.SubmitBlock(context.Background(), parent)
 		require.NoError(t, err)
-
-		require.NoError(t, c.ProposeParent(1, id))
+		require.NoError(t, c.ProposeParent(1, parentID))
 	}
 
+	// check that a new milestone gets issued
 	require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == 1 }, waitFor, tick)
+
+	// shut everything down
+	for _, c := range abci.Apps {
+		require.NoError(t, c.Stop())
+	}
 }
 
-func generateTestKeys(n int) ([]ed25519.PrivateKey, []ed25519.PublicKey) {
-	var privates []ed25519.PrivateKey
-	var publics []ed25519.PublicKey
+func generateTestKeys(n int) (privateKeys []ed25519.PrivateKey, publicKeys []ed25519.PublicKey) {
 	for i := 0; i < n; i++ {
 		var seed [ed25519.SeedSize]byte
 		binary.PutVarint(seed[:], int64(i))
 		private := ed25519.NewKeyFromSeed(seed[:])
 
-		privates = append(privates, private)
-		publics = append(publics, private.Public().(ed25519.PublicKey))
+		privateKeys = append(privateKeys, private)
+		publicKeys = append(publicKeys, private.Public().(ed25519.PublicKey))
 	}
 
-	return privates, publics
+	return privateKeys, publicKeys
 }
 
 type INXMock struct {
@@ -170,7 +178,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Contains(m.t, m.solidBlocks, parent)
 	}
 
-	// validate block
+	// validate the block
 	_, err := block.Serialize(serializer.DeSeriModePerformValidation, nil)
 	require.NoError(m.t, err)
 
@@ -182,6 +190,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		require.Equal(m.t, m.latestMilestoneID(), ms.PreviousMilestoneID)
 		require.Contains(m.t, ms.Parents, m.latestMilestoneBlockID())
 		require.Equal(m.t, block.Parents, ms.Parents)
+		// TODO: validate the milestone signatures
 
 		// state must be valid
 		state, err := NewStateFromMilestone(ms)
