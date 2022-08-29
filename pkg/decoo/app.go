@@ -134,14 +134,15 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			// make sure that we have at most BlockMaxParents-1 parents
 			if len(parents) > iotago.BlockMaxParents-1 {
 				// sort the parents, first by IssuerCount and then by BlockID
-				sort.Slice(parents, func(i, j int) bool {
-					a, b := parents[i], parents[j]
-					cmp := c.deliverState.IssuerCountByParent[a] - c.deliverState.IssuerCountByParent[b]
-					if cmp == 0 {
-						return bytes.Compare(a[:], b[:]) < 0
-					}
-					return cmp < 0
-				})
+				sort.Slice(parents,
+					func(i, j int) bool { // return true, when the element at i must sort before the element at j
+						a, b := parents[i], parents[j]
+						cmp := c.deliverState.IssuerCountByParent[b] - c.deliverState.IssuerCountByParent[a]
+						if cmp == 0 {
+							return bytes.Compare(a[:], b[:]) < 0
+						}
+						return cmp < 0 // c.deliverState.IssuerCountByParent[b] < c.deliverState.IssuerCountByParent[a]
+					})
 				parents = parents[:iotago.BlockMaxParents-1]
 			}
 			// add the last milestone block ID and sort
