@@ -118,10 +118,11 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 		// collect parents that have sufficient proofs
 		parentWeight := 0
 		var parents iotago.BlockIDs
-		for blockID, preMsProofs := range c.deliverState.ProofIssuersByBlockID {
-			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(preMsProofs) > c.committee.F() {
+		for blockID, proofs := range c.deliverState.ProofIssuersByBlockID {
+			// a parent is considered valid, if at least one honest peer issued a proof for it
+			if c.deliverState.IssuerCountByParent[blockID] > 0 && len(proofs) > c.committee.F() {
 				parentWeight += c.deliverState.IssuerCountByParent[blockID]
-				// the last milestone block ID will be added later anyway
+				// the last milestone block ID will be added later anyway, so ignore it here
 				if blockID != c.deliverState.LastMilestoneBlockID {
 					parents = append(parents, blockID)
 				}
