@@ -102,7 +102,7 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 		protoParamsFunc:              inxClient.ProtocolParameters,
 		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
 	}
-	// no need to store more Tendermint transactions than in one epoch, i.e. 1 parent, n proofs, 1 signature
+	// no need to store more Tendermint txs than what is sent in one epoch, i.e. 1 parent, n proofs, 1 signature
 	maxTransactions := 1 + committee.N() + 1
 	c.broadcastQueue = queue.New(maxTransactions, func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 	return c, nil
