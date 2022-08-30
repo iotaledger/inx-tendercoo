@@ -264,7 +264,7 @@ func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.
 	defer cancel()
 
 	ms, err := nodeBridge.Milestone(ctx, index)
-	if err != nil || ms == nil {
+	if err != nil {
 		return nil, err
 	}
 
