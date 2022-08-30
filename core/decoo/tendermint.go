@@ -108,20 +108,18 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
-	i := 0
-	genesisValidators := make([]tmtypes.GenesisValidator, len(Parameters.Tendermint.Validators))
+	genesisValidators := make([]tmtypes.GenesisValidator, 0, len(Parameters.Tendermint.Validators))
 	for name, validator := range Parameters.Tendermint.Validators {
 		var publicKeyBytes types.Byte32
 		if err := publicKeyBytes.Set(validator.PublicKey); err != nil {
 			return nil, nil, fmt.Errorf("invalid public key for validator %s: %w", strconv.Quote(name), err)
 		}
 		pubKey := tmed25519.PubKey(publicKeyBytes[:])
-		genesisValidators[i] = tmtypes.GenesisValidator{
+		genesisValidators = append(genesisValidators, tmtypes.GenesisValidator{
 			PubKey: pubKey,
 			Power:  validator.Power,
 			Name:   name,
-		}
-		i++
+		})
 	}
 
 	var peers []string
