@@ -140,7 +140,8 @@ func MarshalTx(c *Committee, tx Tx) ([]byte, error) {
 		}
 	case *Proof:
 		txEssence.Message = &tendermint.Essence_Proof{
-			Proof: &tendermint.Proof{Index: tx.Index,
+			Proof: &tendermint.Proof{
+				Index:         tx.Index,
 				ParentBlockId: tx.Parent[:],
 			},
 		}

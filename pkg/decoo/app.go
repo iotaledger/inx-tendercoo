@@ -15,7 +15,7 @@ import (
 	"github.com/iotaledger/iota.go/v3/builder"
 )
 
-// the coordinator must implement all functions of an ABCI application
+// Coordinator must implement all functions of an ABCI application.
 var _ abcitypes.Application = (*Coordinator)(nil)
 
 // ABCI return codes
@@ -131,36 +131,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 		// if enough parents have been confirmed, create the milestone essence
 		if parentWeight > c.committee.F() {
-			// make sure that we have at most BlockMaxParents-1 parents
-			if len(parents) > iotago.BlockMaxParents-1 {
-				// sort the parents, first by IssuerCount and then by BlockID
-				sort.Slice(parents,
-					func(i, j int) bool { // return true, when the element at i must sort before the element at j
-						a, b := parents[i], parents[j]
-						cmp := c.deliverState.IssuerCountByParent[b] - c.deliverState.IssuerCountByParent[a]
-						if cmp == 0 {
-							return bytes.Compare(a[:], b[:]) < 0
-						}
-						return cmp < 0 // c.deliverState.IssuerCountByParent[b] < c.deliverState.IssuerCountByParent[a]
-					})
-				parents = parents[:iotago.BlockMaxParents-1]
-			}
-			// add the last milestone block ID and sort
-			parents = append(parents, c.deliverState.LastMilestoneBlockID)
-			parents = parents.RemoveDupsAndSort()
-
-			c.log.Debugw("create milestone", "state", c.deliverState.State, "parents", parents)
-
-			timestamp := uint32(c.blockTime.Unix())
-			// the local context is only set when the coordinator gets started; so we have to use context.Background() here
-			inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(context.Background(), c.deliverState.MilestoneIndex, timestamp, parents, c.deliverState.LastMilestoneID)
-			if err != nil {
-				panic(err)
-			}
-
-			// create milestone essence
-			c.deliverState.Milestone = iotago.NewMilestone(c.deliverState.MilestoneIndex, timestamp, c.protoParamsFunc().Version, c.deliverState.LastMilestoneID, parents, types.Byte32FromSlice(inclMerkleRoot), types.Byte32FromSlice(appliedMerkleRoot))
-			c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
+			c.createMilestoneEssence(parents)
 		}
 	}
 
@@ -207,23 +178,9 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		len(c.deliverState.SignaturesByIssuer) < c.committee.T() && // and there are not enough partial signatures yet
 		c.deliverState.SignaturesByIssuer[c.committee.ID()] == nil { // and our signatures is not yet part of the state
 
-		// create the partial signature for that essence
-		essence, err := c.deliverState.Milestone.Essence()
-		if err != nil {
-			panic(err)
-		}
-		partial := &PartialSignature{
-			Signature: c.committee.Sign(essence).Signature[:],
-		}
-		tx, err := MarshalTx(c.committee, partial)
-		if err != nil {
-			panic(err)
-		}
-
-		// the partial signature tx only passes CheckTx once the checkState has been updated to contain the milestone
-		// during commit the mempool is locked, thus broadcasting it here assures that checkState is updated
-		c.log.Debugw("broadcast tx", "partial", partial)
-		c.broadcastQueue.Submit(tx)
+		// the PartialSignature tx only passes CheckTx once the checkState has been updated to contain the milestone
+		// since during commit the mempool is locked, the broadcast tx will not be processed before the state is updated
+		c.broadcastPartial()
 	}
 
 	// if we have a sufficient amount of signatures, the milestone is done
@@ -237,21 +194,13 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// add the signatures to the milestone
 		c.deliverState.Milestone.Signatures = signatures
 
-		// create and issue the milestone, if it is newer than the latest available milestone
-		latest, err := c.inxClient.LatestMilestone()
-		if err != nil {
-			c.log.Errorf("failed to get latest milestone: %s", err)
-		}
-		if latest == nil || c.deliverState.Milestone.Index > latest.Index {
-			ms := *c.deliverState.Milestone
-			go func() {
-				if err := c.createAndSendMilestone(c.ctx, ms); err != nil {
-					panic(err)
-				}
-			}()
-		} else {
-			c.log.Debugw("milestone skipped", "index", c.deliverState.Milestone.Index, "latest", latest.Index)
-		}
+		// submit the milestone in a separate go routine to unlock the Tendermint state as soon as possible
+		ms := *c.deliverState.Milestone
+		go func() {
+			if err := c.submitMilestoneBlock(c.ctx, &ms); err != nil {
+				panic(err)
+			}
+		}()
 
 		// reset the state for the next milestone
 		state := &State{
@@ -273,6 +222,23 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
+func (c *Coordinator) broadcastPartial() {
+	essence, err := c.deliverState.Milestone.Essence()
+	if err != nil {
+		panic(err)
+	}
+	partial := &PartialSignature{
+		Signature: c.committee.Sign(essence).Signature[:],
+	}
+	tx, err := MarshalTx(c.committee, partial)
+	if err != nil {
+		panic(err)
+	}
+
+	c.log.Debugw("broadcast tx", "partial", partial)
+	c.broadcastQueue.Submit(tx)
+}
+
 func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
 	// only create proofs for solid tips that are not below max depth
@@ -292,11 +258,66 @@ func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	c.broadcastQueue.Submit(tx)
 }
 
-func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Milestone) error {
+func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
+	// make sure that we have at most BlockMaxParents-1 parents
+	if len(parents) > iotago.BlockMaxParents-1 {
+		// sort the parents, first by IssuerCount and then by BlockID
+		sort.Slice(parents,
+			func(i, j int) bool { // return true, when the element at i must sort before the element at j
+				a, b := parents[i], parents[j]
+				cmp := c.deliverState.IssuerCountByParent[b] - c.deliverState.IssuerCountByParent[a]
+				if cmp == 0 {
+					return bytes.Compare(a[:], b[:]) < 0
+				}
+				return cmp < 0 // c.deliverState.IssuerCountByParent[b] < c.deliverState.IssuerCountByParent[a]
+			})
+		parents = parents[:iotago.BlockMaxParents-1]
+	}
+	// add the last milestone block ID and sort
+	parents = append(parents, c.deliverState.LastMilestoneBlockID)
+	parents = parents.RemoveDupsAndSort()
+
+	c.log.Debugw("create milestone", "state", c.deliverState.State, "parents", parents)
+
+	timestamp := uint32(c.blockTime.Unix())
+	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
+	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
+		context.Background(),
+		c.deliverState.MilestoneIndex,
+		timestamp,
+		parents,
+		c.deliverState.LastMilestoneID)
+	if err != nil {
+		panic(err)
+	}
+
+	// create milestone essence
+	c.deliverState.Milestone = iotago.NewMilestone(
+		c.deliverState.MilestoneIndex,
+		timestamp,
+		c.protoParamsFunc().Version,
+		c.deliverState.LastMilestoneID,
+		parents,
+		types.Byte32FromSlice(inclMerkleRoot),
+		types.Byte32FromSlice(appliedMerkleRoot))
+	c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
+}
+
+func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Milestone) error {
+	// skip, if ms is not the newest milestone
+	latest, err := c.inxClient.LatestMilestone()
+	if err != nil {
+		return fmt.Errorf("failed to get latest milestone: %w", err)
+	}
+	if latest != nil && ms.Index <= latest.Index {
+		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", latest.Index)
+		return nil
+	}
+
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members(ms.Index)); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	block, err := buildMilestoneBlock(&ms)
+	block, err := buildMilestoneBlock(ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
@@ -311,12 +332,12 @@ func (c *Coordinator) createAndSendMilestone(ctx context.Context, ms iotago.Mile
 			// only report an error, if we couldn't submit, and it is not present
 			return fmt.Errorf("submitting the milestone failed: %w", err)
 		}
-		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
 		// TODO: also report this as a metric
-	} else {
-		c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
+		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
+		return nil
 	}
 
+	c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
 	return nil
 }
 
