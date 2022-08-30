@@ -24,12 +24,16 @@ var _ decoo.INXClient = (*INXClient)(nil)
 
 // LatestMilestone returns the latest milestone received by the node.
 func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
-	if latest, err := c.NodeBridge.LatestMilestone(); err != nil {
+	latest, err := c.NodeBridge.LatestMilestone()
+	if err != nil {
 		return nil, err
-	} else if latest != nil {
+	}
+
+	if latest != nil {
 		return latest.Milestone, nil
 	}
 
+	//nolint:nilnil // nil, nil is ok in this context, even if it is not go idiomatic
 	return nil, nil
 }
 
@@ -39,6 +43,7 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestam
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query latest milestone: %w", err)
 	}
+
 	// if the node already contains that particular milestone, query it
 	if latest != nil && latest.Index >= index {
 		return c.recomputeWhiteFlag(ctx, index)
