@@ -160,7 +160,7 @@ func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
 	return solid, nil
 }
 
-func (m *INXMock) BlockMetadata(iotago.BlockID) (*inxutils.BlockMetadata, error) {
+func (m *INXMock) BlockMetadata(context.Context, iotago.BlockID) (*inxutils.BlockMetadata, error) {
 	panic("not implemented")
 }
 
@@ -217,7 +217,7 @@ func (m *INXMock) ComputeWhiteFlag(ctx context.Context, index uint32, _ uint32, 
 	return make([]byte, iotago.MilestoneMerkleProofLength), make([]byte, iotago.MilestoneMerkleProofLength), nil
 }
 
-func (m *INXMock) RegisterBlockSolidCallback(id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
+func (m *INXMock) RegisterBlockSolidCallback(ctx context.Context, id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
 	m.Lock()
 	defer m.Unlock()
 	if _, ok := m.solidBlocks[id]; ok {

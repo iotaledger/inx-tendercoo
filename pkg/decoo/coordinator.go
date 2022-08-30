@@ -36,14 +36,14 @@ type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
 
-	BlockMetadata(iotago.BlockID) (*inx.BlockMetadata, error)
+	BlockMetadata(context.Context, iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
 }
 
 // TangleListener contains the functions used to listen to Tangle changes.
 type TangleListener interface {
-	RegisterBlockSolidCallback(iotago.BlockID, func(*inx.BlockMetadata)) error
+	RegisterBlockSolidCallback(context.Context, iotago.BlockID, func(*inx.BlockMetadata)) error
 	ClearBlockSolidCallbacks()
 }
 

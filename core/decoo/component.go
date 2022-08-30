@@ -240,11 +240,16 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		if tendermintHeight >= state.MilestoneHeight {
 			break
 		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
 		// try the previous milestone
-		ms, err = nodeBridge.Milestone(state.MilestoneIndex - 1)
+		ms, err = nodeBridge.Milestone(ctx, state.MilestoneIndex-1)
 		if err != nil || ms == nil {
+			cancel()
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
+		cancel()
 	}
 
 	if err := coordinator.InitState(ms.Milestone); err != nil {

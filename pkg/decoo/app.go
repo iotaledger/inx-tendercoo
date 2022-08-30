@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
@@ -154,7 +155,10 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
 			index := c.deliverState.MilestoneIndex
-			_ = c.listener.RegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = c.listener.RegisterBlockSolidCallback(ctx, blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+			cancel()
 		}
 	}
 
@@ -328,7 +332,7 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, block)
 	if err != nil {
 		// if SubmitBlock failed, check whether block is still present in the node, submitted by a different validator
-		if _, blockErr := c.inxClient.BlockMetadata(block.MustID()); blockErr != nil {
+		if _, blockErr := c.inxClient.BlockMetadata(ctx, block.MustID()); blockErr != nil {
 			// only report an error, if we couldn't submit, and it is not present
 			return fmt.Errorf("submitting the milestone failed: %w", err)
 		}
