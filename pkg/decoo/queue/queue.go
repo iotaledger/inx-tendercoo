@@ -117,6 +117,7 @@ func (q *Queue) ringPop() {
 	n := q.ring.Next()
 	if n == q.ring {
 		q.ring = nil
+
 		return
 	}
 	q.ring.Prev().Link(n)
@@ -129,6 +130,7 @@ func (q *Queue) ringPush(val any) {
 	p.Value = val
 	if q.ring == nil {
 		q.ring = p
+
 		return
 	}
 	p.Link(q.ring)

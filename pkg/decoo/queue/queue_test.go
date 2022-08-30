@@ -25,6 +25,7 @@ func TestSubmit(t *testing.T) {
 	sum := 0
 	q := queue.New(capacity, func(v any) error {
 		sum += v.(int)
+
 		return nil
 	})
 	defer q.Stop()
@@ -41,6 +42,7 @@ func TestOrder(t *testing.T) {
 	q := queue.New(capacity, func(v any) error {
 		i := v.(uint32)
 		require.True(t, a.CompareAndSwap(i-1, i))
+
 		return nil
 	})
 	defer q.Stop()
@@ -58,6 +60,7 @@ func TestRetry(t *testing.T) {
 		if counter < 3 {
 			return errTest
 		}
+
 		return nil
 	})
 	defer q.Stop()
@@ -77,6 +80,7 @@ func TestSkip(t *testing.T) {
 			return errTest
 		}
 		a.Store(i)
+
 		return nil
 	})
 	defer q.Stop()
@@ -95,6 +99,7 @@ func TestCapacity(t *testing.T) {
 		started <- struct{}{}
 		<-wait
 		require.True(t, v.(bool))
+
 		return nil
 	})
 	defer q.Stop()
@@ -120,6 +125,7 @@ func TestSubmitWhileExecuting(t *testing.T) {
 			close(started)
 		}
 		<-wait
+
 		return nil
 	})
 	defer q.Stop()

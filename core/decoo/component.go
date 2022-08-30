@@ -217,8 +217,10 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
 			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
 				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
+
 			return fmt.Errorf("bootstrap failed: %w", err)
 		}
+
 		return nil
 	}
 
@@ -247,6 +249,7 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		ms, err = nodeBridge.Milestone(ctx, state.MilestoneIndex-1)
 		if err != nil || ms == nil {
 			cancel()
+
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
 		cancel()
@@ -255,6 +258,7 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	if err := coordinator.InitState(ms.Milestone); err != nil {
 		return fmt.Errorf("resume failed: %w", err)
 	}
+
 	return nil
 }
 
@@ -370,6 +374,7 @@ func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("environment variable %s contains an invalid private key: %w", strconv.Quote(name), err)
 	}
+
 	return key, nil
 }
 
@@ -378,10 +383,12 @@ func privateKeyFromString(s string) (ed25519.PrivateKey, error) {
 	if err := seed.Set(s); err != nil {
 		return nil, err
 	}
+
 	return ed25519.NewKeyFromSeed(seed[:]), nil
 }
 
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
+
 	return !os.IsNotExist(err)
 }

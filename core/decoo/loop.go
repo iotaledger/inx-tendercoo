@@ -68,6 +68,7 @@ func coordinatorLoop(ctx context.Context) {
 			if !deps.NodeBridge.IsNodeSynced() {
 				CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
+
 				continue
 			}
 
@@ -154,5 +155,6 @@ func remainingInterval(ts time.Time) time.Duration {
 	if d < 0 {
 		d = 0
 	}
+
 	return d
 }

@@ -91,6 +91,7 @@ func (v *Committee) Sign(message []byte) *iotago.Ed25519Signature {
 	edSigs := &iotago.Ed25519Signature{}
 	copy(edSigs.PublicKey[:], v.PublicKey())
 	copy(edSigs.Signature[:], ed25519.Sign(v.privateKey, message))
+
 	return edSigs
 }
 
@@ -103,6 +104,7 @@ func (v *Committee) VerifySingle(msIndex iotago.MilestoneIndex, message []byte, 
 	if !ed25519.Verify(publicKey, message, signature) {
 		return ErrInvalidSignature
 	}
+
 	return nil
 }
 
@@ -110,6 +112,7 @@ func maxFaulty(n int) int {
 	if n <= 0 {
 		panic("Committee: at least one member required")
 	}
+
 	return (n - 1) / 3
 }
 

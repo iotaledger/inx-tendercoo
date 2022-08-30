@@ -159,5 +159,6 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 	if err := gen.ValidateAndComplete(); err != nil {
 		return nil, nil, fmt.Errorf("invalid genesis config: %w", err)
 	}
+
 	return conf, gen, nil
 }

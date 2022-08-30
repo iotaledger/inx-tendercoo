@@ -207,6 +207,7 @@ func (s *HeaviestSelector) selectGreedy(minRequiredTips int, tipsList *trackedBl
 			if len(tips) >= minRequiredTips {
 				return tips, nil
 			}
+
 			return tips, err
 		}
 		if i == 0 {

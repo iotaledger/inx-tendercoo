@@ -70,6 +70,7 @@ func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCh
 	if err := tx.Apply(issuer, &c.checkState); err != nil {
 		return abcitypes.ResponseCheckTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
+
 	return abcitypes.ResponseCheckTx{Code: CodeTypeOK}
 }
 
@@ -79,6 +80,7 @@ func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.Resp
 	defer c.deliverState.Unlock()
 
 	c.blockTime = req.Header.Time
+
 	return abcitypes.ResponseBeginBlock{}
 }
 
@@ -104,6 +106,7 @@ func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Respon
 	if err := tx.Apply(issuer, &c.deliverState); err != nil {
 		return abcitypes.ResponseDeliverTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
+
 	return abcitypes.ResponseDeliverTx{Code: CodeTypeOK}
 }
 
@@ -223,6 +226,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 	// make a deep copy of the state
 	c.checkState.Copy(&c.deliverState)
+
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
@@ -248,6 +252,7 @@ func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	// only create proofs for solid tips that are not below max depth
 	if !meta.Solid || meta.ReferencedByMilestoneIndex > 0 || meta.ShouldReattach {
 		c.log.Debugw("invalid tip", "parent", blockID)
+
 		return
 	}
 
@@ -273,6 +278,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 				if cmp == 0 {
 					return bytes.Compare(a[:], b[:]) < 0
 				}
+
 				return cmp < 0 // c.deliverState.IssuerCountByParent[b] < c.deliverState.IssuerCountByParent[a]
 			})
 		parents = parents[:iotago.BlockMaxParents-1]
@@ -315,6 +321,7 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 	}
 	if latest != nil && ms.Index <= latest.Index {
 		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", latest.Index)
+
 		return nil
 	}
 
@@ -338,10 +345,12 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 		}
 		// TODO: also report this as a metric
 		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
+
 		return nil
 	}
 
 	c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
+
 	return nil
 }
 
@@ -355,5 +364,6 @@ func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
 	if err != nil {
 		panic(err)
 	}
+
 	return msg.MustID()
 }

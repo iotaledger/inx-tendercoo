@@ -29,6 +29,7 @@ func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
 	} else if latest != nil {
 		return latest.Milestone, nil
 	}
+
 	return nil, nil
 }
 
@@ -53,6 +54,7 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestam
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return res.GetMilestoneInclusionMerkleRoot(), res.GetMilestoneAppliedMerkleRoot(), nil
 }
 
@@ -73,6 +75,7 @@ func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byt
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return nil, nil, err
 		}
 
