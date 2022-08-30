@@ -371,6 +371,7 @@ services:
       - "-c"
       - "config.json"
       - "--inx.address=172.18.211.31:9029"
+      - "--spammer.workers=1"
       - "--restAPI.bindAddress=172.18.211.41:9092"
     profiles:
       - run
