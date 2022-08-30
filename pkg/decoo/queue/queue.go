@@ -89,6 +89,8 @@ func (q *Queue) process() {
 	q.mu.Lock()
 	r := q.ring
 	q.mu.Unlock()
+
+	//nolint:ifshort // false positive
 	err := q.f(r.Value) // execute f without locking the queue
 
 	q.mu.Lock()
