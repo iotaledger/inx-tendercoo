@@ -2,22 +2,21 @@ package mselection
 
 import (
 	"container/list"
-	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.uber.org/atomic"
 
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
-var (
-	// ErrNoTipsAvailable is returned when no tips are available in the node.
-	ErrNoTipsAvailable = errors.New("no tips available")
-)
+// ErrNoTipsAvailable is returned when no tips are available in the node.
+var ErrNoTipsAvailable = errors.New("no tips available")
 
 // HeaviestSelector implements the heaviest branch selection strategy.
 type HeaviestSelector struct {
@@ -79,6 +78,16 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 	s.Reset()
 
 	return s
+}
+
+// NumTips returns the number of tips.
+func (s *HeaviestSelector) NumTips() int {
+	return s.tips.Len()
+}
+
+// TrackedBlocks returns the number of tracked blocks.
+func (s *HeaviestSelector) TrackedBlocks() int {
+	return len(s.trackedBlocks)
 }
 
 // Reset resets the tracked blocks map and tips list of s.
@@ -143,49 +152,19 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 // The cancellation parameters unreferencedBlocksThreshold and timeout are only considered when at least
 // minRequiredTips tips have been selected.
 func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
+	if minRequiredTips < 1 {
+		panic("HeaviestSelector: at least one tip must be required")
+	}
+
 	// create a working list with the current tips to release the lock to allow faster iteration
 	// and to get a frozen view of the tangle, so an attacker can't
 	// create heavier branches while we are searching the best tips
 	// caution: the tips are not copied, do not mutate!
 	tipsList := s.tipsToList()
 
-	// tips could be empty after a reset
-	if tipsList.Len() == 0 {
-		return nil, ErrNoTipsAvailable
-	}
-
-	var tips iotago.BlockIDs
-
-	// run the tip selection for at most 0.1s to keep the view on the tangle recent; this should be plenty
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
-	defer cancel()
-
-	var first uint
-	for i := 0; i < s.maxTips; i++ {
-		select {
-		case <-ctx.Done():
-			// stop if we already have sufficient number of tips
-			if len(tips) > minRequiredTips {
-				break
-			}
-		default:
-		}
-
-		tip, count, err := s.selectTip(tipsList)
-		if err != nil {
-			break
-		}
-		if i == 0 {
-			first = count
-		}
-
-		// stop if the latest tip confirms too few transactions compared to the first
-		if len(tips) > minRequiredTips && float64(count)/float64(first) < s.reducedConfirmationLimit {
-			break
-		}
-
-		tipsList.referenceTip(tip)
-		tips = append(tips, tip.blockID)
+	tips, err := s.selectGreedy(minRequiredTips, tipsList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select tips: %w", err)
 	}
 
 	if len(tips) == 0 {
@@ -194,6 +173,54 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 
 	// reset the whole HeaviestSelector if valid tips were found
 	s.Reset()
+
+	return tips, nil
+}
+
+// selectGreedy selects the best tips greedily from tipsList.
+func (s *HeaviestSelector) selectGreedy(minRequiredTips int, tipsList *trackedBlocksList) (iotago.BlockIDs, error) {
+	// use a timeout for the selection to keep the view on the tangle recent
+	var expired atomic.Bool
+	timer := time.AfterFunc(s.timeout, func() { expired.Store(true) })
+	defer timer.Stop()
+
+	var (
+		tips           iotago.BlockIDs
+		lastTip        *trackedBlock
+		bestReferenced uint
+	)
+	for i := 0; i < s.maxTips; i++ {
+		// stop if the timeout was reached
+		if len(tips) >= minRequiredTips && expired.Load() {
+			return tips, nil
+		}
+
+		// remove the last tip from the list
+		if lastTip != nil {
+			tipsList.referenceTip(lastTip)
+		}
+
+		// get the tip confirming the most blocks
+		tip, numReferenced, err := s.selectTip(tipsList)
+		if err != nil {
+			// ignore the error, if we have enough tips
+			if len(tips) >= minRequiredTips {
+				return tips, nil
+			}
+			return tips, err
+		}
+		if i == 0 {
+			bestReferenced = numReferenced
+		}
+
+		// stop if the latest tip confirms too few transactions compared to the first
+		if len(tips) >= minRequiredTips && float64(numReferenced)/float64(bestReferenced) < s.reducedConfirmationLimit {
+			return tips, nil
+		}
+
+		tips = append(tips, tip.blockID)
+		lastTip = tip
+	}
 
 	return tips, nil
 }
@@ -228,7 +255,7 @@ func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock
 		return nil, 0, ErrNoTipsAvailable
 	}
 
-	var best = struct {
+	best := struct {
 		tips  []*trackedBlock
 		count uint
 	}{

@@ -1,4 +1,4 @@
-package decoo
+package decoo_test
 
 import (
 	"math/rand"
@@ -6,12 +6,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/tpkg"
 )
 
 func TestState(t *testing.T) {
-	s := &State{
+	s := &decoo.State{
 		MilestoneHeight:      rand.Int63(),
 		MilestoneIndex:       rand.Uint32(),
 		LastMilestoneID:      tpkg.Rand32ByteArray(),
@@ -21,7 +22,7 @@ func TestState(t *testing.T) {
 	ms.Metadata = s.Metadata()
 	t.Logf("%+v\n", ms)
 
-	s2, err := NewStateFromMilestone(ms)
+	s2, err := decoo.NewStateFromMilestone(ms)
 	require.NoError(t, err)
 	require.Equal(t, s, s2)
 }

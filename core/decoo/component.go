@@ -49,10 +49,9 @@ const (
 
 	// EnvMilestonePrivateKey defines the name of the environment variable containing the key used for signing milestones.
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
-	// SyncRetryInterval defines the time to wait before retrying an un-synced node
+	// SyncRetryInterval defines the time to wait before retrying an un-synced node.
 	SyncRetryInterval = 2 * time.Second
 
-	// names of the background worker
 	tangleListenerWorkerName = "TangleListener"
 	tendermintWorkerName     = "Tendermint Node"
 	decooWorkerName          = "Coordinator"

@@ -19,7 +19,7 @@ var merkle = merklehasher.NewHasher(crypto.BLAKE2b_256)
 // INXClient is a wrapper around nodebridge.NodeBridge to provide the functionality used by the coordinator.
 type INXClient struct{ *nodebridge.NodeBridge }
 
-// INXClient must implement the corresponding interface
+// INXClient must implement the corresponding interface.
 var _ decoo.INXClient = (*INXClient)(nil)
 
 // LatestMilestone returns the latest milestone received by the node.
