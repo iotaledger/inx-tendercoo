@@ -54,6 +54,8 @@ func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey
 		}
 		keySet[publicKey] = struct{}{}
 	}
+
+	//nolint:forcetypeassert // no need to check here
 	publicKey := iotago.MilestonePublicKey(types.Byte32FromSlice(privateKey.Public().(ed25519.PublicKey)))
 	if _, has := keySet[publicKey]; !has {
 		panic("Committee: private key does not belong to a public key")
@@ -73,6 +75,7 @@ func (v *Committee) T() int { return v.t }
 
 // PublicKey returns the public key of the local member.
 func (v *Committee) PublicKey() ed25519.PublicKey {
+	//nolint:forcetypeassert // no need to check here
 	return v.privateKey.Public().(ed25519.PublicKey)
 }
 

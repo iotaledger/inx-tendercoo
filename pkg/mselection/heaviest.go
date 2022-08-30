@@ -243,7 +243,10 @@ func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 
 	result := make(map[iotago.BlockID]*trackedBlock)
 	for e := s.tips.Front(); e != nil; e = e.Next() {
-		tip := e.Value.(*trackedBlock)
+		tip, ok := e.Value.(*trackedBlock)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *trackedBlock, got %T", e.Value))
+		}
 		result[tip.blockID] = tip
 	}
 

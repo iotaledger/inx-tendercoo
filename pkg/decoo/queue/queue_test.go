@@ -1,3 +1,4 @@
+//nolint:forcetypeassert // we don't care about these linters in test cases
 package queue_test
 
 import (
