@@ -1,3 +1,4 @@
+//nolint:nosnakecase // tendermint package uses underscores
 package decoo
 
 import (
@@ -55,6 +56,7 @@ func (p *Parent) Apply(issuer ed25519.PublicKey, state *AppState) error {
 	// add the parent to the state
 	state.ParentByIssuer[issuerID] = p.BlockID
 	state.IssuerCountByParent[p.BlockID]++
+
 	return nil
 }
 
@@ -91,6 +93,7 @@ func (p *Proof) Apply(issuer ed25519.PublicKey, state *AppState) error {
 
 	// add the proof to the state
 	proofs[issuerID] = struct{}{}
+
 	return nil
 }
 
@@ -124,6 +127,7 @@ func (p *PartialSignature) Apply(issuer ed25519.PublicKey, state *AppState) erro
 
 	// add the partial signature to the state
 	state.SignaturesByIssuer[IDFromPublicKey(issuer)] = sig
+
 	return nil
 }
 
@@ -164,6 +168,7 @@ func MarshalTx(c *Committee, tx Tx) ([]byte, error) {
 		PublicKey: c.PublicKey(),
 		Signature: c.Sign(essence).Signature[:],
 	}
+
 	return proto.Marshal(txRaw)
 }
 

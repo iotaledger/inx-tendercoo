@@ -68,6 +68,7 @@ func coordinatorLoop(ctx context.Context) {
 			if !deps.NodeBridge.IsNodeSynced() {
 				CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
+
 				continue
 			}
 
@@ -83,6 +84,7 @@ func coordinatorLoop(ctx context.Context) {
 				time.Sleep(d)
 			}
 			// propose a random tip as parent for the next milestone
+			//nolint:gosec // we don't care about weak random numbers here
 			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
@@ -154,5 +156,6 @@ func remainingInterval(ts time.Time) time.Duration {
 	if d < 0 {
 		d = 0
 	}
+
 	return d
 }

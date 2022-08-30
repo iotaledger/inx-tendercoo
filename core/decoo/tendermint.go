@@ -108,7 +108,7 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 		log.Infow("Generated node key", "path", nodeKeyFile)
 	}
 
-	var genesisValidators []tmtypes.GenesisValidator
+	genesisValidators := make([]tmtypes.GenesisValidator, 0, len(Parameters.Tendermint.Validators))
 	for name, validator := range Parameters.Tendermint.Validators {
 		var publicKeyBytes types.Byte32
 		if err := publicKeyBytes.Set(validator.PublicKey); err != nil {
@@ -159,5 +159,6 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 	if err := gen.ValidateAndComplete(); err != nil {
 		return nil, nil, fmt.Errorf("invalid genesis config: %w", err)
 	}
+
 	return conf, gen, nil
 }

@@ -89,6 +89,8 @@ func (q *Queue) process() {
 	q.mu.Lock()
 	r := q.ring
 	q.mu.Unlock()
+
+	//nolint:ifshort // false positive
 	err := q.f(r.Value) // execute f without locking the queue
 
 	q.mu.Lock()
@@ -117,6 +119,7 @@ func (q *Queue) ringPop() {
 	n := q.ring.Next()
 	if n == q.ring {
 		q.ring = nil
+
 		return
 	}
 	q.ring.Prev().Link(n)
@@ -129,6 +132,7 @@ func (q *Queue) ringPush(val any) {
 	p.Value = val
 	if q.ring == nil {
 		q.ring = p
+
 		return
 	}
 	p.Link(q.ring)

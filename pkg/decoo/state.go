@@ -44,6 +44,7 @@ func (s *State) Metadata() []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return bytes
 }
 

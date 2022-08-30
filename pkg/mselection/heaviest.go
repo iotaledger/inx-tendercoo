@@ -1,3 +1,4 @@
+//nolint:gosec // we don't care about weak random numbers here
 package mselection
 
 import (
@@ -207,6 +208,7 @@ func (s *HeaviestSelector) selectGreedy(minRequiredTips int, tipsList *trackedBl
 			if len(tips) >= minRequiredTips {
 				return tips, nil
 			}
+
 			return tips, err
 		}
 		if i == 0 {
@@ -241,7 +243,10 @@ func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 
 	result := make(map[iotago.BlockID]*trackedBlock)
 	for e := s.tips.Front(); e != nil; e = e.Next() {
-		tip := e.Value.(*trackedBlock)
+		tip, ok := e.Value.(*trackedBlock)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *trackedBlock, got %T", e.Value))
+		}
 		result[tip.blockID] = tip
 	}
 

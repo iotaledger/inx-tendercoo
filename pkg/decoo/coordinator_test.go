@@ -1,3 +1,4 @@
+//nolint:nilnil,contextcheck,scopelint,forcetypeassert // we don't care about these linters in test cases
 package decoo
 
 import (
@@ -150,6 +151,7 @@ func (m *INXMock) LatestMilestone() (*iotago.Milestone, error) {
 	if block := m.latestMilestoneBlock(); block != nil {
 		return block.Payload.(*iotago.Milestone), nil
 	}
+
 	return nil, nil
 }
 
@@ -157,10 +159,11 @@ func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
 	m.Lock()
 	defer m.Unlock()
 	_, solid := m.solidBlocks[id]
+
 	return solid, nil
 }
 
-func (m *INXMock) BlockMetadata(iotago.BlockID) (*inxutils.BlockMetadata, error) {
+func (m *INXMock) BlockMetadata(context.Context, iotago.BlockID) (*inxutils.BlockMetadata, error) {
 	panic("not implemented")
 }
 
@@ -207,6 +210,7 @@ func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.
 		go f(&inxutils.BlockMetadata{BlockId: inxutils.NewBlockId(id), Solid: true})
 		delete(m.blockSolidCallbacks, id)
 	}
+
 	return id, nil
 }
 
@@ -217,13 +221,14 @@ func (m *INXMock) ComputeWhiteFlag(ctx context.Context, index uint32, _ uint32, 
 	return make([]byte, iotago.MilestoneMerkleProofLength), make([]byte, iotago.MilestoneMerkleProofLength), nil
 }
 
-func (m *INXMock) RegisterBlockSolidCallback(id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
+func (m *INXMock) RegisterBlockSolidCallback(ctx context.Context, id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
 	m.Lock()
 	defer m.Unlock()
 	if _, ok := m.solidBlocks[id]; ok {
 		go f(&inxutils.BlockMetadata{BlockId: inxutils.NewBlockId(id), Solid: true})
 	}
 	m.blockSolidCallbacks[id] = f
+
 	return nil
 }
 
@@ -236,6 +241,7 @@ func (m *INXMock) ClearBlockSolidCallbacks() {
 func (m *INXMock) LatestMilestoneBlockID() iotago.BlockID {
 	m.Lock()
 	defer m.Unlock()
+
 	return m.latestMilestoneBlockID()
 }
 
@@ -245,6 +251,7 @@ func (m *INXMock) LatestMilestoneIndex() uint32 {
 	if block := m.latestMilestoneBlock(); block != nil {
 		return block.Payload.(*iotago.Milestone).Index
 	}
+
 	return 0
 }
 
@@ -252,6 +259,7 @@ func (m *INXMock) latestMilestoneBlock() *iotago.Block {
 	if len(m.milestones) == 0 {
 		return nil
 	}
+
 	return m.milestones[len(m.milestones)-1]
 }
 
@@ -259,14 +267,17 @@ func (m *INXMock) latestMilestoneBlockID() iotago.BlockID {
 	if block := m.latestMilestoneBlock(); block != nil {
 		return block.MustID()
 	}
+
 	return iotago.EmptyBlockID()
 }
 
 func (m *INXMock) latestMilestoneID() iotago.MilestoneID {
 	if block := m.latestMilestoneBlock(); block != nil {
 		id, _ := block.Payload.(*iotago.Milestone).ID()
+
 		return id
 	}
+
 	return [32]byte{}
 }
 
@@ -303,6 +314,7 @@ func (m *ABCIMock) BroadcastTxSync(ctx context.Context, tx tmtypes.Tx) (*tmcore.
 	}
 
 	m.Txs = append(m.Txs, tx)
+
 	return &tmcore.ResultBroadcastTx{}, nil
 }
 

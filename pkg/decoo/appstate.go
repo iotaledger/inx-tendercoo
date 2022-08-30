@@ -71,5 +71,6 @@ func (a *AppState) Hash() []byte {
 		panic(err)
 	}
 	hash := blake2b.Sum256(buf)
+
 	return hash[:]
 }

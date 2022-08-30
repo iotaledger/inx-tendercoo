@@ -18,7 +18,7 @@ import (
 // Coordinator must implement all functions of an ABCI application.
 var _ abcitypes.Application = (*Coordinator)(nil)
 
-// ABCI return codes
+// ABCI return codes.
 const (
 	CodeTypeOK uint32 = iota
 	CodeTypeSizeError
@@ -69,6 +69,7 @@ func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCh
 	if err := tx.Apply(issuer, &c.checkState); err != nil {
 		return abcitypes.ResponseCheckTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
+
 	return abcitypes.ResponseCheckTx{Code: CodeTypeOK}
 }
 
@@ -78,6 +79,7 @@ func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.Resp
 	defer c.deliverState.Unlock()
 
 	c.blockTime = req.Header.Time
+
 	return abcitypes.ResponseBeginBlock{}
 }
 
@@ -103,6 +105,7 @@ func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Respon
 	if err := tx.Apply(issuer, &c.deliverState); err != nil {
 		return abcitypes.ResponseDeliverTx{Code: CodeTypeStateError, Log: err.Error()}
 	}
+
 	return abcitypes.ResponseDeliverTx{Code: CodeTypeOK}
 }
 
@@ -153,8 +156,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
-			index := c.deliverState.MilestoneIndex
-			_ = c.listener.RegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+			c.registerProcessParentOnSolid(blockID, c.deliverState.MilestoneIndex)
 		}
 	}
 
@@ -219,6 +221,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 	// make a deep copy of the state
 	c.checkState.Copy(&c.deliverState)
+
 	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
 }
 
@@ -239,11 +242,20 @@ func (c *Coordinator) broadcastPartial() {
 	c.broadcastQueue.Submit(tx)
 }
 
+func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
+	// the local context is only set when the coordinator is started; we have to use context.Background() here
+	err := c.listener.RegisterBlockSolidCallback(context.Background(), blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+	if err != nil {
+		panic(err)
+	}
+}
+
 func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
 	// only create proofs for solid tips that are not below max depth
 	if !meta.Solid || meta.ReferencedByMilestoneIndex > 0 || meta.ShouldReattach {
 		c.log.Debugw("invalid tip", "parent", blockID)
+
 		return
 	}
 
@@ -269,6 +281,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 				if cmp == 0 {
 					return bytes.Compare(a[:], b[:]) < 0
 				}
+
 				return cmp < 0 // c.deliverState.IssuerCountByParent[b] < c.deliverState.IssuerCountByParent[a]
 			})
 		parents = parents[:iotago.BlockMaxParents-1]
@@ -280,6 +293,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 	c.log.Debugw("create milestone", "state", c.deliverState.State, "parents", parents)
 
 	timestamp := uint32(c.blockTime.Unix())
+
 	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
 	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
 		context.Background(),
@@ -311,6 +325,7 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 	}
 	if latest != nil && ms.Index <= latest.Index {
 		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", latest.Index)
+
 		return nil
 	}
 
@@ -328,16 +343,18 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, block)
 	if err != nil {
 		// if SubmitBlock failed, check whether block is still present in the node, submitted by a different validator
-		if _, blockErr := c.inxClient.BlockMetadata(block.MustID()); blockErr != nil {
+		if _, blockErr := c.inxClient.BlockMetadata(ctx, block.MustID()); blockErr != nil {
 			// only report an error, if we couldn't submit, and it is not present
 			return fmt.Errorf("submitting the milestone failed: %w", err)
 		}
 		// TODO: also report this as a metric
 		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
+
 		return nil
 	}
 
 	c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
+
 	return nil
 }
 
@@ -351,5 +368,6 @@ func MilestoneBlockID(ms *iotago.Milestone) iotago.BlockID {
 	if err != nil {
 		panic(err)
 	}
+
 	return msg.MustID()
 }

@@ -51,6 +51,8 @@ const (
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
 	// SyncRetryInterval defines the time to wait before retrying an un-synced node.
 	SyncRetryInterval = 2 * time.Second
+	// INXTimeout defines the timeout after which INX API calls are canceled.
+	INXTimeout = 5 * time.Second
 
 	tangleListenerWorkerName = "TangleListener"
 	tendermintWorkerName     = "Tendermint Node"
@@ -80,14 +82,14 @@ var (
 	CoreComponent *app.CoreComponent
 	deps          dependencies
 
-	// config flags
+	// config flags.
 	bootstrap             bool
 	startIndex            uint32
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
 
-	// closures
+	// closures.
 	onBlockSolid                *events.Closure
 	onConfirmedMilestoneChanged *events.Closure
 )
@@ -217,8 +219,10 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
 			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
 				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
+
 			return fmt.Errorf("bootstrap failed: %w", err)
 		}
+
 		return nil
 	}
 
@@ -240,9 +244,10 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		if tendermintHeight >= state.MilestoneHeight {
 			break
 		}
+
 		// try the previous milestone
-		ms, err = nodeBridge.Milestone(state.MilestoneIndex - 1)
-		if err != nil || ms == nil {
+		ms, err = getMilestone(nodeBridge, state.MilestoneIndex-1)
+		if err != nil {
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
 	}
@@ -250,7 +255,20 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	if err := coordinator.InitState(ms.Milestone); err != nil {
 		return fmt.Errorf("resume failed: %w", err)
 	}
+
 	return nil
+}
+
+func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+	defer cancel()
+
+	ms, err := nodeBridge.Milestone(ctx, index)
+	if err != nil {
+		return nil, err
+	}
+
+	return ms, nil
 }
 
 func configure() error {
@@ -365,6 +383,7 @@ func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("environment variable %s contains an invalid private key: %w", strconv.Quote(name), err)
 	}
+
 	return key, nil
 }
 
@@ -373,10 +392,12 @@ func privateKeyFromString(s string) (ed25519.PrivateKey, error) {
 	if err := seed.Set(s); err != nil {
 		return nil, err
 	}
+
 	return ed25519.NewKeyFromSeed(seed[:]), nil
 }
 
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
+
 	return !os.IsNotExist(err)
 }

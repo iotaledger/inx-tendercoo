@@ -54,6 +54,8 @@ func NewCommittee(privateKey ed25519.PrivateKey, publicKeys ...ed25519.PublicKey
 		}
 		keySet[publicKey] = struct{}{}
 	}
+
+	//nolint:forcetypeassert // no need to check here
 	publicKey := iotago.MilestonePublicKey(types.Byte32FromSlice(privateKey.Public().(ed25519.PublicKey)))
 	if _, has := keySet[publicKey]; !has {
 		panic("Committee: private key does not belong to a public key")
@@ -73,6 +75,7 @@ func (v *Committee) T() int { return v.t }
 
 // PublicKey returns the public key of the local member.
 func (v *Committee) PublicKey() ed25519.PublicKey {
+	//nolint:forcetypeassert // no need to check here
 	return v.privateKey.Public().(ed25519.PublicKey)
 }
 
@@ -91,6 +94,7 @@ func (v *Committee) Sign(message []byte) *iotago.Ed25519Signature {
 	edSigs := &iotago.Ed25519Signature{}
 	copy(edSigs.PublicKey[:], v.PublicKey())
 	copy(edSigs.Signature[:], ed25519.Sign(v.privateKey, message))
+
 	return edSigs
 }
 
@@ -103,6 +107,7 @@ func (v *Committee) VerifySingle(msIndex iotago.MilestoneIndex, message []byte, 
 	if !ed25519.Verify(publicKey, message, signature) {
 		return ErrInvalidSignature
 	}
+
 	return nil
 }
 
@@ -110,6 +115,7 @@ func maxFaulty(n int) int {
 	if n <= 0 {
 		panic("Committee: at least one member required")
 	}
+
 	return (n - 1) / 3
 }
 

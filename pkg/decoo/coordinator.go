@@ -36,14 +36,14 @@ type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
 
-	BlockMetadata(iotago.BlockID) (*inx.BlockMetadata, error)
+	BlockMetadata(context.Context, iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
 	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
 }
 
 // TangleListener contains the functions used to listen to Tangle changes.
 type TangleListener interface {
-	RegisterBlockSolidCallback(iotago.BlockID, func(*inx.BlockMetadata)) error
+	RegisterBlockSolidCallback(context.Context, iotago.BlockID, func(*inx.BlockMetadata)) error
 	ClearBlockSolidCallbacks()
 }
 
@@ -64,6 +64,7 @@ type Coordinator struct {
 	listener  TangleListener
 	log       *logger.Logger
 
+	//nolint:containedctx // false positive
 	ctx                          context.Context
 	cancel                       context.CancelFunc
 	protoParamsFunc              ProtocolParametersFunc
@@ -104,7 +105,10 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 	}
 	// no need to store more Tendermint txs than what is sent in one epoch, i.e. 1 parent, n proofs, 1 signature
 	maxTransactions := 1 + committee.N() + 1
+
+	//nolint:forcetypeassert // we only submit []byte into the queue
 	c.broadcastQueue = queue.New(maxTransactions, func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
+
 	return c, nil
 }
 
@@ -126,6 +130,7 @@ func (c *Coordinator) Bootstrap(force bool, index uint32, milestoneID iotago.Mil
 	}
 	c.initState(0, state)
 	c.log.Infow("Coordinator bootstrapped", "state", state)
+
 	return nil
 }
 
@@ -138,6 +143,7 @@ func (c *Coordinator) InitState(ms *iotago.Milestone) error {
 
 	c.initState(state.MilestoneHeight, state)
 	c.log.Infow("Coordinator resumed", "state", state)
+
 	return nil
 }
 
@@ -147,6 +153,7 @@ func (c *Coordinator) Start(client ABCIClient) error {
 	c.started.Store(true)
 
 	c.log.Infow("Coordinator started", "publicKey", c.committee.ID())
+
 	return nil
 }
 
@@ -155,6 +162,7 @@ func (c *Coordinator) Stop() error {
 	c.started.Store(false)
 	c.cancel()
 	c.broadcastQueue.Stop()
+
 	return nil
 }
 
@@ -167,6 +175,7 @@ func (c *Coordinator) PublicKey() ed25519.PublicKey {
 func (c *Coordinator) MilestoneIndex() uint32 {
 	c.checkState.Lock()
 	defer c.checkState.Unlock()
+
 	return c.checkState.MilestoneIndex
 }
 
@@ -196,6 +205,7 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	if res.Code != CodeTypeOK {
 		return fmt.Errorf("invalid proposal: %s", res.Log)
 	}
+
 	return nil
 }
 
@@ -236,6 +246,7 @@ func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct
 	if index <= c.MilestoneIndex() {
 		c.stateMilestoneIndexSyncEvent.Trigger(index)
 	}
+
 	return ch
 }
 
@@ -247,5 +258,6 @@ func (c *Coordinator) broadcastTx(tx []byte) error {
 	if err == nil && res.Code != CodeTypeOK {
 		c.log.Warnf("broadcast did not pass CheckTx: %s", res.Log)
 	}
+
 	return err
 }
