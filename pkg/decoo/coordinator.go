@@ -64,6 +64,7 @@ type Coordinator struct {
 	listener  TangleListener
 	log       *logger.Logger
 
+	//nolint:containedctx // false positive
 	ctx                          context.Context
 	cancel                       context.CancelFunc
 	protoParamsFunc              ProtocolParametersFunc

@@ -1,4 +1,4 @@
-//nolint:nilnil // we don't care about these linters in test cases
+//nolint:nilnil,contextcheck // we don't care about these linters in test cases
 package decoo
 
 import (
