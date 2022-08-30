@@ -51,6 +51,8 @@ const (
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
 	// SyncRetryInterval defines the time to wait before retrying an un-synced node.
 	SyncRetryInterval = 2 * time.Second
+	// INXTimeout defines the timeout after which INX API calls are cancelled.
+	INXTimeout = 5 * time.Second
 
 	tangleListenerWorkerName = "TangleListener"
 	tendermintWorkerName     = "Tendermint Node"
@@ -243,16 +245,11 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 			break
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
 		// try the previous milestone
-		ms, err = nodeBridge.Milestone(ctx, state.MilestoneIndex-1)
-		if err != nil || ms == nil {
-			cancel()
-
+		ms, err = getMilestone(nodeBridge, state.MilestoneIndex-1)
+		if err != nil {
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
-		cancel()
 	}
 
 	if err := coordinator.InitState(ms.Milestone); err != nil {
@@ -260,6 +257,18 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	}
 
 	return nil
+}
+
+func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+	defer cancel()
+
+	ms, err := nodeBridge.Milestone(ctx, index)
+	if err != nil || ms == nil {
+		return nil, err
+	}
+
+	return ms, nil
 }
 
 func configure() error {

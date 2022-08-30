@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
@@ -157,11 +156,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
-			index := c.deliverState.MilestoneIndex
-
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = c.listener.RegisterBlockSolidCallback(ctx, blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
-			cancel()
+			c.registerProcessParentOnSolid(blockID, c.deliverState.MilestoneIndex)
 		}
 	}
 
@@ -247,6 +242,17 @@ func (c *Coordinator) broadcastPartial() {
 	c.broadcastQueue.Submit(tx)
 }
 
+func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
+	// the local context is only set when the coordinator is started; we have to use context.Background() here
+	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+	defer cancel()
+
+	err := c.listener.RegisterBlockSolidCallback(ctx, blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+	if err != nil {
+		panic(err)
+	}
+}
+
 func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
 	// only create proofs for solid tips that are not below max depth
@@ -290,9 +296,13 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 	c.log.Debugw("create milestone", "state", c.deliverState.State, "parents", parents)
 
 	timestamp := uint32(c.blockTime.Unix())
+
 	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
+	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+	defer cancel()
+
 	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
-		context.Background(),
+		ctx,
 		c.deliverState.MilestoneIndex,
 		timestamp,
 		parents,
