@@ -1,3 +1,4 @@
+//nolint:gosec // we don't care about weak random numbers here
 package mselection
 
 import (
