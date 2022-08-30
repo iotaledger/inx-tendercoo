@@ -197,7 +197,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// submit the milestone in a separate go routine to unlock the Tendermint state as soon as possible
 		ms := *c.deliverState.Milestone
 		go func() {
-			if err := c.submitMilestoneBlock(c.ctx, ms); err != nil {
+			if err := c.submitMilestoneBlock(c.ctx, &ms); err != nil {
 				panic(err)
 			}
 		}()
@@ -303,7 +303,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 	c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
 }
 
-func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms iotago.Milestone) error {
+func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Milestone) error {
 	// skip, if ms is not the newest milestone
 	latest, err := c.inxClient.LatestMilestone()
 	if err != nil {
@@ -317,7 +317,7 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms iotago.Milest
 	if err := ms.VerifySignatures(c.committee.T(), c.committee.Members(ms.Index)); err != nil {
 		return fmt.Errorf("validating the signatures failed: %w", err)
 	}
-	block, err := buildMilestoneBlock(&ms)
+	block, err := buildMilestoneBlock(ms)
 	if err != nil {
 		return fmt.Errorf("building the block failed: %w", err)
 	}
