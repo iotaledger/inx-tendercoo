@@ -51,7 +51,7 @@ const (
 	EnvMilestonePrivateKey = "COO_PRV_KEY"
 	// SyncRetryInterval defines the time to wait before retrying an un-synced node.
 	SyncRetryInterval = 2 * time.Second
-	// INXTimeout defines the timeout after which INX API calls are cancelled.
+	// INXTimeout defines the timeout after which INX API calls are canceled.
 	INXTimeout = 5 * time.Second
 
 	tangleListenerWorkerName = "TangleListener"

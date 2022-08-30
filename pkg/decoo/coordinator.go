@@ -22,7 +22,7 @@ import (
 const (
 	// ProtocolVersion defines the version of the coordinator Tendermint application.
 	ProtocolVersion uint64 = 0x1
-	// INXTimeout defines the timeout after which INX API calls are cancelled.
+	// INXTimeout defines the timeout after which INX API calls are canceled.
 	INXTimeout = 5 * time.Second
 )
 
