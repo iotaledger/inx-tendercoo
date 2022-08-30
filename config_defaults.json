@@ -11,7 +11,7 @@
     "maxTrackedBlocks": 10000,
     "tipsel": {
       "maxTips": 7,
-      "reducedConfirmationLimit": 0.7,
+      "reducedConfirmationLimit": 0.6,
       "timeout": "100ms"
     },
     "tendermint": {

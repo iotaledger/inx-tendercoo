@@ -77,7 +77,7 @@ Example:
 | Name                     | Description                                                                                              | Type   | Default value |
 | ------------------------ | -------------------------------------------------------------------------------------------------------- | ------ | ------------- |
 | maxTips                  | Maximum number of tips returned                                                                          | int    | 7             |
-| reducedConfirmationLimit | Stop selection, when tips reference less additional blocks than this fraction (compared to the best tip) | float  | 0.7           |
+| reducedConfirmationLimit | Stop selection, when tips reference less additional blocks than this fraction (compared to the best tip) | float  | 0.6           |
 | timeout                  | Timeout after which tip selection is canceled                                                            | string | "100ms"       |
 
 ### <a id="coordinator_tendermint"></a> Tendermint
@@ -121,7 +121,7 @@ Example:
       "maxTrackedBlocks": 10000,
       "tipsel": {
         "maxTips": 7,
-        "reducedConfirmationLimit": 0.7,
+        "reducedConfirmationLimit": 0.6,
         "timeout": "100ms"
       },
       "tendermint": {
