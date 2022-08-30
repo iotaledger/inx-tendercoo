@@ -80,14 +80,14 @@ var (
 	CoreComponent *app.CoreComponent
 	deps          dependencies
 
-	// config flags
+	// config flags.
 	bootstrap             bool
 	startIndex            uint32
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
 
-	// closures
+	// closures.
 	onBlockSolid                *events.Closure
 	onConfirmedMilestoneChanged *events.Closure
 )

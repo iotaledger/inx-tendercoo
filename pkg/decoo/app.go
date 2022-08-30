@@ -19,7 +19,7 @@ import (
 // Coordinator must implement all functions of an ABCI application.
 var _ abcitypes.Application = (*Coordinator)(nil)
 
-// ABCI return codes
+// ABCI return codes.
 const (
 	CodeTypeOK uint32 = iota
 	CodeTypeSizeError
