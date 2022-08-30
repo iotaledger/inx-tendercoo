@@ -14,6 +14,7 @@ import (
 	"github.com/iotaledger/iota.go/v3/merklehasher"
 )
 
+//nolint:nosnakecase // crypto package uses underscores
 var merkle = merklehasher.NewHasher(crypto.BLAKE2b_256)
 
 // INXClient is a wrapper around nodebridge.NodeBridge to provide the functionality used by the coordinator.
@@ -87,6 +88,7 @@ func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byt
 		blockID := payload.UnwrapBlockID()
 		includedBlockIDs = append(includedBlockIDs, blockID)
 		// BlockMetadata_INCLUDED is set when the block contains a transaction that mutates the ledger
+		//nolint:nosnakecase // gRPC uses underscores
 		if payload.GetLedgerInclusionState() == inx.BlockMetadata_LEDGER_INCLUSION_STATE_INCLUDED {
 			appliedBlockIDs = append(appliedBlockIDs, blockID)
 		}

@@ -1,3 +1,4 @@
+//nolint:nosnakecase // tendermint package uses underscores
 package decoo
 
 import (
