@@ -244,10 +244,7 @@ func (c *Coordinator) broadcastPartial() {
 
 func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
 	// the local context is only set when the coordinator is started; we have to use context.Background() here
-	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
-	defer cancel()
-
-	err := c.listener.RegisterBlockSolidCallback(ctx, blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+	err := c.listener.RegisterBlockSolidCallback(context.Background(), blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
 	if err != nil {
 		panic(err)
 	}
@@ -298,11 +295,8 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 	timestamp := uint32(c.blockTime.Unix())
 
 	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
-	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
-	defer cancel()
-
 	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
-		ctx,
+		context.Background(),
 		c.deliverState.MilestoneIndex,
 		timestamp,
 		parents,
