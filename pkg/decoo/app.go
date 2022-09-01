@@ -74,12 +74,12 @@ func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCh
 
 // BeginBlock is the first method called for each new block.
 func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
-	c.deliverState.Lock()
-	defer c.deliverState.Unlock()
-
 	if err := c.cms.ValidateHeight(req.Header.Height); err != nil {
 		panic(err)
 	}
+
+	c.deliverState.Lock()
+	defer c.deliverState.Unlock()
 
 	c.deliverState.blockHeader = req.Header
 
@@ -206,7 +206,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 		// reset the state for the next milestone
 		state := &State{
-			MilestoneHeight:      c.deliverState.blockHeader.Height,
+			MilestoneHeight:      c.deliverState.blockHeader.Height + 1,
 			MilestoneIndex:       c.deliverState.MilestoneIndex + 1,
 			LastMilestoneID:      c.deliverState.Milestone.MustID(),
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),

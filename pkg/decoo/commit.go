@@ -13,15 +13,15 @@ type CommitInfo struct {
 
 // CommitStore provides easier handling for CommitInfo.
 type CommitStore struct {
-	sync.Mutex
+	sync.RWMutex
 
 	info CommitInfo
 }
 
 // LastCommitInfo returns the last commit information.
 func (c *CommitStore) LastCommitInfo() CommitInfo {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	return c.info
 }
