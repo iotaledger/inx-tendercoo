@@ -40,7 +40,7 @@ func TestAppState_Encoding(t *testing.T) {
 
 func TestAppState_Reset(t *testing.T) {
 	s := randState()
-	s.Reset(0, &decoo.State{})
+	s.Reset(&decoo.State{})
 	require.NotEqual(t, &decoo.AppState{}, s)
 
 	// all maps must be initialized
@@ -70,14 +70,13 @@ func TestAppState_Copy(t *testing.T) {
 	// test that a reset state is copied
 	s = randState()
 	reset := &decoo.AppState{}
-	reset.Reset(0, &decoo.State{})
+	reset.Reset(&decoo.State{})
 	s.Copy(reset)
 	require.Equal(t, reset, s)
 }
 
 func randState() *decoo.AppState {
 	return &decoo.AppState{
-		Height: rand.Int63(),
 		State: decoo.State{
 			MilestoneHeight:      rand.Int63(),
 			MilestoneIndex:       rand.Uint32(),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	abcitypes "github.com/tendermint/tendermint/abci/types"
+	tmprototypes "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 
@@ -305,15 +306,15 @@ func (m *ABCIMock) BroadcastTxSync(ctx context.Context, tx tmtypes.Tx) (*tmcore.
 	default:
 	}
 
+	m.Txs = append(m.Txs, tx)
+
 	// trigger a new block containing that transaction on every application
 	for _, app := range m.Apps {
-		app.BeginBlock(abcitypes.RequestBeginBlock{})
+		app.BeginBlock(abcitypes.RequestBeginBlock{Header: tmprototypes.Header{Height: int64(len(m.Txs))}})
 		app.DeliverTx(abcitypes.RequestDeliverTx{Tx: tx})
 		app.EndBlock(abcitypes.RequestEndBlock{})
 		app.Commit()
 	}
-
-	m.Txs = append(m.Txs, tx)
 
 	return &tmcore.ResultBroadcastTx{}, nil
 }
@@ -325,7 +326,7 @@ func (m *ABCIMock) Replay() {
 	for _, app := range m.Apps {
 		resp := app.Info(abcitypes.RequestInfo{})
 		for i := resp.LastBlockHeight; i < int64(len(m.Txs)); i++ {
-			app.BeginBlock(abcitypes.RequestBeginBlock{})
+			app.BeginBlock(abcitypes.RequestBeginBlock{Header: tmprototypes.Header{Height: i + 1}})
 			app.DeliverTx(abcitypes.RequestDeliverTx{Tx: m.Txs[i]})
 			app.EndBlock(abcitypes.RequestEndBlock{})
 			app.Commit()

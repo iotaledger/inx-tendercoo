@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"time"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
@@ -75,7 +74,7 @@ type Coordinator struct {
 	checkState   AppState
 	deliverState AppState
 
-	blockTime time.Time
+	cms CommitStore
 
 	abciClient ABCIClient
 	started    atomic.Bool
@@ -237,8 +236,9 @@ func (c *Coordinator) initState(height int64, state *State) {
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
-	c.checkState.Reset(height, state)
-	c.deliverState.Reset(height, state)
+	c.checkState.Reset(state)
+	c.deliverState.Reset(state)
+	c.cms.info = CommitInfo{Height: height, Hash: c.deliverState.Hash()}
 }
 
 func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct{} {
