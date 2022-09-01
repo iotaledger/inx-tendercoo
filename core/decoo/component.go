@@ -291,7 +291,9 @@ func configure() error {
 	// pass all new confirmed milestones to the coordinator loop
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
 		// ignore new confirmed milestones during syncing
-		if !deps.NodeBridge.IsNodeSynced() {
+		// there is currently a bug in NodeBridge where LatestMilestoneIndex < ConfirmedMilestoneIndex can happen
+		if l := deps.NodeBridge.LatestMilestoneIndex(); l > milestone.Milestone.Index {
+			CoreComponent.LogDebugf("node is not synced; latest=%d confirmed=%d", l, milestone.Milestone.Index)
 			return
 		}
 		CoreComponent.LogInfof("new confirmed milestone: %d", milestone.Milestone.Index)
