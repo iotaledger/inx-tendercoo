@@ -20,7 +20,7 @@ import (
 // in the iotago.Milestone.
 // It is therefore possible to reconstruct the State from a given milestone.
 type State struct {
-	// MilestoneHeight denotes the Block height of the milestone's first block in Tendermint..
+	// MilestoneHeight denotes the Tendermint block height when the application state was reset for this milestone.
 	MilestoneHeight int64
 	// MilestoneIndex denotes the index of this milestone.
 	MilestoneIndex uint32
