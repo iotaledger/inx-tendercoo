@@ -151,13 +151,19 @@ func loadTendermintConfig(consensusPrivateKey ed25519.PrivateKey, nodePrivateKey
 		return nil, nil, fmt.Errorf("chain ID must match the network name %s", strconv.Quote(networkName))
 	}
 	gen := &tmtypes.GenesisDoc{
-		GenesisTime:   time.Unix(Parameters.Tendermint.GenesisTime, 0),
-		ChainID:       Parameters.Tendermint.ChainID,
-		InitialHeight: 0,
-		Validators:    genesisValidators,
+		GenesisTime:     time.Unix(Parameters.Tendermint.GenesisTime, 0),
+		ChainID:         Parameters.Tendermint.ChainID,
+		InitialHeight:   0,
+		ConsensusParams: tmtypes.DefaultConsensusParams(),
+		Validators:      genesisValidators,
 	}
+	gen.ConsensusParams.Block.TimeIotaMs = 500 // 0.5 s
 	if err := gen.ValidateAndComplete(); err != nil {
 		return nil, nil, fmt.Errorf("invalid genesis config: %w", err)
+	}
+
+	if Parameters.Tendermint.Consensus.BlockInterval.Milliseconds() < gen.ConsensusParams.Block.TimeIotaMs {
+		return nil, nil, fmt.Errorf("block interval cannot be lower than the time iota (%d ms) genesis parameter", gen.ConsensusParams.Block.TimeIotaMs)
 	}
 
 	return conf, gen, nil

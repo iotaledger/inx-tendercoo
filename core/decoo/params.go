@@ -32,7 +32,7 @@ type ParametersDefinition struct {
 		Consensus struct {
 			CreateEmptyBlocks         bool          `default:"false" usage:"whether empty blocks are created"`
 			CreateEmptyBlocksInterval time.Duration `default:"0s" usage:"create empty blocks after waiting this long without receiving anything"`
-			BlockInterval             time.Duration `default:"1s" usage:"delay between blocks"`
+			BlockInterval             time.Duration `default:"700ms" usage:"delay between blocks"`
 			SkipBlockTimeout          bool          `default:"false" usage:"make progress as soon as we have all the precommits"`
 		}
 

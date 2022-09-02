@@ -16,7 +16,7 @@ import (
 type AppState struct {
 	sync.Mutex
 
-	// information that is not part of the persisted state
+	// blockHeader stores the header from BeginBlock. This is only part of the context and not the actual state.
 	blockHeader tmtypes.Header
 
 	// State contains the coordinator state.
