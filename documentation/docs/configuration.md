@@ -107,7 +107,7 @@ Example:
 | ------------------------- | ---------------------------------------------------------------------- | ------- | ------------- |
 | createEmptyBlocks         | Whether empty blocks are created                                       | boolean | false         |
 | createEmptyBlocksInterval | Create empty blocks after waiting this long without receiving anything | string  | "0s"          |
-| blockInterval             | Delay between blocks                                                   | string  | "1s"          |
+| blockInterval             | Delay between blocks                                                   | string  | "700ms"       |
 | skipBlockTimeout          | Make progress as soon as we have all the precommits                    | boolean | false         |
 
 ### <a id="coordinator_tendermint_prometheus"></a> Prometheus
@@ -141,7 +141,7 @@ Example:
         "consensus": {
           "createEmptyBlocks": false,
           "createEmptyBlocksInterval": "0s",
-          "blockInterval": "1s",
+          "blockInterval": "700ms",
           "skipBlockTimeout": false
         },
         "prometheus": {

@@ -26,7 +26,7 @@
       "consensus": {
         "createEmptyBlocks": false,
         "createEmptyBlocksInterval": "0s",
-        "blockInterval": "1s",
+        "blockInterval": "700ms",
         "skipBlockTimeout": false
       },
       "prometheus": {

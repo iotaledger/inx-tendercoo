@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	tmtypes "github.com/tendermint/tendermint/proto/tendermint/types"
 	"golang.org/x/crypto/blake2b"
 
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -15,8 +16,8 @@ import (
 type AppState struct {
 	sync.Mutex
 
-	// Height denotes the height of the Tendermint blockchain.
-	Height int64
+	// blockHeader stores the header from BeginBlock. This is only part of the context and not the actual state.
+	blockHeader tmtypes.Header
 
 	// State contains the coordinator state.
 	State
@@ -42,8 +43,7 @@ func (a *AppState) MarshalBinary() ([]byte, error) { return json.Marshal(a) }
 func (a *AppState) UnmarshalBinary(data []byte) error { return json.Unmarshal(data, a) }
 
 // Reset resets the complete state after a new milestone has been issued.
-func (a *AppState) Reset(height int64, state *State) {
-	a.Height = height
+func (a *AppState) Reset(state *State) {
 	a.State = *state
 	a.ParentByIssuer = map[PeerID]iotago.BlockID{}
 	a.IssuerCountByParent = map[iotago.BlockID]int{}
@@ -58,7 +58,7 @@ func (a *AppState) Copy(o *AppState) {
 	if err != nil {
 		panic(err)
 	}
-	a.Reset(o.Height, &o.State)
+	a.Reset(&o.State)
 	if err := a.UnmarshalBinary(data); err != nil {
 		panic(err)
 	}

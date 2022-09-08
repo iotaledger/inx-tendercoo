@@ -30,22 +30,21 @@ const (
 // Info is called during initialization to retrieve and validate application state.
 // LastBlockHeight is used to determine which blocks need to be replayed to the application during syncing.
 func (c *Coordinator) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo {
-	c.log.Debugw("ABCI info", "req", req)
+	c.log.Debugw("ABCI Info", "req", req)
 
-	c.deliverState.Lock()
-	defer c.deliverState.Unlock()
+	last := c.cms.LastCommitInfo()
 
 	return abcitypes.ResponseInfo{
 		Data:             fmt.Sprintf("{\"milestone_index\":%d}", c.deliverState.MilestoneIndex),
 		AppVersion:       ProtocolVersion,
-		LastBlockHeight:  c.deliverState.Height,
-		LastBlockAppHash: c.deliverState.Hash(),
+		LastBlockHeight:  last.Height,
+		LastBlockAppHash: last.Hash,
 	}
 }
 
 // Query queries the application for information about application state.
 func (c *Coordinator) Query(req abcitypes.RequestQuery) abcitypes.ResponseQuery {
-	c.log.Debugw("ABCI query", "req", req)
+	c.log.Debugw("ABCI Query", "req", req)
 
 	return abcitypes.ResponseQuery{Code: CodeTypeNotSupportedError}
 }
@@ -75,10 +74,16 @@ func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCh
 
 // BeginBlock is the first method called for each new block.
 func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
+	c.log.Debugw("ABCI BeginBlock", "req", req)
+
+	if err := c.cms.ValidateHeight(req.Header.Height); err != nil {
+		panic(err)
+	}
+
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
-	c.blockTime = req.Header.Time
+	c.deliverState.blockHeader = req.Header
 
 	return abcitypes.ResponseBeginBlock{}
 }
@@ -172,9 +177,6 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
-	// update the block height
-	c.deliverState.Height++
-
 	// create and broadcast our partial signature
 	if c.deliverState.Milestone != nil && // if we have an essence to sign
 		len(c.deliverState.SignaturesByIssuer) < c.committee.T() && // and there are not enough partial signatures yet
@@ -206,12 +208,12 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 		// reset the state for the next milestone
 		state := &State{
-			MilestoneHeight:      c.deliverState.Height,
+			MilestoneHeight:      c.deliverState.blockHeader.Height,
 			MilestoneIndex:       c.deliverState.MilestoneIndex + 1,
 			LastMilestoneID:      c.deliverState.Milestone.MustID(),
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
-		c.deliverState.Reset(c.deliverState.Height, state)
+		c.deliverState.Reset(state)
 
 		// the callbacks are no longer relevant
 		c.listener.ClearBlockSolidCallbacks()
@@ -221,8 +223,10 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 
 	// make a deep copy of the state
 	c.checkState.Copy(&c.deliverState)
+	// update the last commit info
+	c.cms.Commit(&c.deliverState)
 
-	return abcitypes.ResponseCommit{Data: c.deliverState.Hash()}
+	return abcitypes.ResponseCommit{Data: c.cms.LastCommitInfo().Hash}
 }
 
 func (c *Coordinator) broadcastPartial() {
@@ -292,7 +296,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 
 	c.log.Debugw("create milestone", "state", c.deliverState.State, "parents", parents)
 
-	timestamp := uint32(c.blockTime.Unix())
+	timestamp := uint32(c.deliverState.blockHeader.Time.Unix())
 
 	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
 	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
