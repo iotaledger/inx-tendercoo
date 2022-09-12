@@ -3,6 +3,7 @@ package decoo
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -233,6 +234,9 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	if err != nil {
 		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
 	}
+	if ms == nil {
+		return errors.New("failed to retrieve latest milestone: no milestone available")
+	}
 
 	// find a milestone that is compatible with the Tendermint block height
 	for {
@@ -290,9 +294,8 @@ func configure() error {
 	// pass all new confirmed milestones to the coordinator loop
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
 		// ignore new confirmed milestones during syncing
-		// there is currently a bug in NodeBridge where LatestMilestoneIndex < ConfirmedMilestoneIndex can happen
-		if l := deps.NodeBridge.LatestMilestoneIndex(); l > milestone.Milestone.Index {
-			CoreComponent.LogDebugf("node is not synced; latest=%d confirmed=%d", l, milestone.Milestone.Index)
+		if lmi := deps.NodeBridge.LatestMilestoneIndex(); lmi > milestone.Milestone.Index {
+			CoreComponent.LogDebugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)
 
 			return
 		}
