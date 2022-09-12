@@ -21,7 +21,6 @@ import (
 
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/events"
-	"github.com/iotaledger/hive.go/core/logger"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
@@ -174,7 +173,7 @@ func provide(c *dig.Container) error {
 		}
 
 		// use a separate logger for Tendermint
-		log := logger.NewLogger("Tendermint")
+		log := CoreComponent.App().NewLogger("Tendermint")
 		lvl, err := zapcore.ParseLevel(Parameters.Tendermint.LogLevel)
 		if err != nil {
 			return nil, fmt.Errorf("invalid log level: %w", err)
