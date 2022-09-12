@@ -6,7 +6,7 @@ replace github.com/iotaledger/inx-tendercoo => ../../
 
 require (
 	github.com/iotaledger/hive.go/apputils v1.0.0-beta.3
-	github.com/iotaledger/hive.go/core v1.0.0-beta.5
+	github.com/iotaledger/hive.go/core v1.0.0-beta.6
 	github.com/iotaledger/inx-tendercoo v0.0.0
 )
 
@@ -54,7 +54,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-beta.3 // indirect
-	github.com/iotaledger/inx-app v1.0.0-beta.12 // indirect
+	github.com/iotaledger/inx-app v1.0.0-beta.13 // indirect
 	github.com/iotaledger/inx/go v1.0.0-beta.8 // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect
 	github.com/iotaledger/iota.go/v3 v3.0.0-beta.9 // indirect
