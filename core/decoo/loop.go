@@ -65,8 +65,17 @@ func coordinatorLoop(ctx context.Context) {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
 			// check that the node is synced
-			if !deps.NodeBridge.IsNodeSynced() {
-				CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
+			lmi := deps.NodeBridge.LatestMilestoneIndex()
+			cmi := deps.NodeBridge.ConfirmedMilestoneIndex()
+			if lmi != cmi {
+				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
+				timer.Reset(SyncRetryInterval)
+
+				continue
+			}
+
+			if cmi != info.index {
+				CoreComponent.LogWarnf("node is not synced; confirmed=%d, current coo index=%d; retrying in %s", cmi, info.index, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
 				continue

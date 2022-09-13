@@ -4,7 +4,6 @@
     "stopGracePeriod": "5m"
   },
   "node": {
-    "profile": "auto",
     "alias": "HORNET private-tangle node"
   },
   "protocol": {
@@ -47,9 +46,6 @@
   "p2p": {
     "db": {
       "path": "p2pstore"
-    },
-    "autopeering": {
-      "enabled": false
     }
   },
   "snapshots": {
@@ -57,11 +53,15 @@
     "deltaPath": "snapshots/delta_snapshot.bin",
     "downloadURLs": []
   },
-  "inx": {
-    "enabled": true,
-    "bindAddress": "localhost:9029",
+  "restAPI": {
+    "publicRoutes": [
+      "/health",
+      "/api/*"
+    ],
+    "protectedRoutes": [],
     "pow": {
-      "workerCount": 0
-    }
+      "enabled": true
+    },
+    "debugRequestLoggerEnabled": false
   }
 }

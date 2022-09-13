@@ -5,4 +5,4 @@ if [ ! -d "privatedb" ]; then
   exit
 fi
 
-docker-compose --profile="run" up
+docker compose --profile="run" up $@

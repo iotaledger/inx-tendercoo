@@ -1,0 +1,93 @@
+# Private Tangle
+
+This folder contains a Docker-based setup to run your own development private Tangle with distributed coordinator. The steps to run a private tangle are:
+
+## Requirements
+1. A recent release of Docker enterprise or community edition. You can find installation instructions in the [official Docker documentation](https://docs.docker.com/engine/install/).
+2. [Docker Compose CLI plugin](https://docs.docker.com/compose/install/compose-plugin/).
+
+## Steps
+
+1. `./bootstrap.sh` this will bootstrap your own private tangle by creating the genesis snapshot.
+   - _**Note:** If you are running this from inside the repository, you should run `./bootstrap.sh build` to re-build the docker images after any updates to the HORNET codebase (e.g. changing files or pulling git changes)_ 
+2. Run:
+   - `./run.sh` to run the 4 distributed COO's + 1 additional node.
+
+3. `./cleanup.sh` to clean up all generated files and start over. 
+
+The nodes will then be reachable under these ports:
+
+- inx-faucet:
+    - Faucet: http://localhost:8091
+    - pprof: http://localhost:6024/debug/pprof
+- Hornet-1:
+    - API: http://localhost:14265
+    - External Peering: 15611/tcp
+    - Dashboard: http://localhost:8011 (username: admin, password: admin)
+    - Prometheus: http://localhost:9311/metrics
+    - pprof: http://localhost:6011/debug/pprof
+    - inx: localhost:9011
+- Hornet-2:
+    - API: http://localhost:14266
+    - External Peering: 15612/tcp
+    - Dashboard: http://localhost:8012 (username: admin, password: admin)
+    - Prometheus: http://localhost:9312/metrics
+    - pprof: http://localhost:6012/debug/pprof
+    - inx: localhost:9012
+- Hornet-3:
+    - API: http://localhost:14267
+    - External Peering: 15613/tcp
+    - Dashboard: http://localhost:8013 (username: admin, password: admin)
+    - Prometheus: http://localhost:9313/metrics
+    - pprof: http://localhost:6013/debug/pprof
+    - inx: localhost:9013
+- Hornet-4:
+    - API: http://localhost:14268
+    - External Peering: 15614/tcp
+    - Dashboard: http://localhost:8014 (username: admin, password: admin)
+    - Prometheus: http://localhost:9314/metrics
+    - pprof: http://localhost:6014/debug/pprof
+    - inx: localhost:9014
+- Hornet-5:
+    - API: http://localhost:14269
+    - External Peering: 15615/tcp
+    - Dashboard: http://localhost:8015 (username: admin, password: admin)
+    - Prometheus: http://localhost:9315/metrics
+    - pprof: http://localhost:6015/debug/pprof
+    - inx: localhost:9015
+- inx-tendercoo-1:
+    - Prometheus: http://localhost:9341/metrics
+- inx-tendercoo-2:
+    - Prometheus: http://localhost:9342/metrics
+- inx-tendercoo-3:
+    - Prometheus: http://localhost:9343/metrics
+- inx-tendercoo-4:
+    - Prometheus: http://localhost:9344/metrics
+- inx-indexer:
+    - pprof: http://localhost:6022/debug/pprof
+    - Prometheus: http://localhost:9322/metrics
+- inx-mqtt:
+    - pprof: http://localhost:6023/debug/pprof
+    - Prometheus: http://localhost:9323/metrics
+- inx-participation:
+    - pprof: http://localhost:6025/debug/pprof
+- inx-spammer:
+    - pprof: http://localhost:6026/debug/pprof
+    - Prometheus: http://localhost:9326/metrics
+- inx-poi:
+    - pprof: http://localhost:6027/debug/pprof
+- inx-dashboard-1:
+    - pprof: http://localhost:6031/debug/pprof
+    - Prometheus: http://localhost:9331/metrics
+- inx-dashboard-2:
+    - pprof: http://localhost:6032/debug/pprof
+    - Prometheus: http://localhost:9332/metrics
+- inx-dashboard-3:
+    - pprof: http://localhost:6033/debug/pprof
+    - Prometheus: http://localhost:9333/metrics
+- inx-dashboard-4:
+    - pprof: http://localhost:6034/debug/pprof
+    - Prometheus: http://localhost:9334/metrics
+- inx-dashboard-5:
+    - pprof: http://localhost:6035/debug/pprof
+    - Prometheus: http://localhost:9335/metrics
