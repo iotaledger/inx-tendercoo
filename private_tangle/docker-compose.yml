@@ -233,6 +233,7 @@ services:
       - "--profiling.bindAddress=172.18.211.15:6060"
     profiles:
       - run
+
   #
   # INX
   #
@@ -242,6 +243,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.22
+    depends_on:
+      - hornet-1
     restart: on-failure
     ports:
       - "9322:9311/tcp"
@@ -269,6 +272,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.23
+    depends_on:
+      - hornet-1
     restart: on-failure
     ports:
       - "9323:9311/tcp"
@@ -293,6 +298,9 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.24
+    depends_on:
+      - hornet-1
+      - inx-indexer
     restart: on-failure
     ports:
       - "8091:8091/tcp"
@@ -317,6 +325,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.25
+    depends_on:
+      - hornet-1
     restart: on-failure
     ports:
       - "9892:9892/tcp"
@@ -338,6 +348,9 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.26
+    depends_on:
+      - hornet-1
+      - inx-indexer
     restart: on-failure
     ports:
       - "9326:9311/tcp"
@@ -380,6 +393,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.27
+    depends_on:
+      - hornet-1
     restart: on-failure
     ports:
       - "9687:9687/tcp"
@@ -549,6 +564,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.41
+    depends_on:
+      - hornet-1
     environment:
       - "COO_PRV_KEY=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
     volumes:
@@ -574,6 +591,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.41
+    depends_on:
+      - hornet-1
     environment:
       - "COO_PRV_KEY=0fe83b7d5d6551904c3eb7a770f3ddb5c063993db3576b97c17c0308f67f11ae"
     volumes:
@@ -601,6 +620,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.42
+    depends_on:
+      - hornet-2
     environment:
       - "COO_PRV_KEY=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
     volumes:
@@ -626,6 +647,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.42
+    depends_on:
+      - hornet-2
     environment:
       - "COO_PRV_KEY=94ef47471913b95475e120b26dcb06d7c2a4ccf99f966dcd233624006bd41846"
     volumes:
@@ -653,6 +676,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.43
+    depends_on:
+      - hornet-3
     environment:
       - "COO_PRV_KEY=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
     volumes:
@@ -678,6 +703,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.43
+    depends_on:
+      - hornet-3
     environment:
       - "COO_PRV_KEY=1d46da9be06f56373132391fc00b3551096d88740ec0314c82f483c32da84789"
     volumes:
@@ -705,6 +732,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.44
+    depends_on:
+      - hornet-4
     environment:
       - "COO_PRV_KEY=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
     volumes:
@@ -730,6 +759,8 @@ services:
     networks:
       peering_net:
         ipv4_address: 172.18.211.44
+    depends_on:
+      - hornet-4
     environment:
       - "COO_PRV_KEY=4ce7bb3c18925405063fe365291cb892954ea89c12b0693ca6f6c015455faca5"
     volumes:
