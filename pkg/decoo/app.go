@@ -3,12 +3,14 @@ package decoo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
 	"github.com/iotaledger/hive.go/serializer/v2"
+	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -249,7 +251,9 @@ func (c *Coordinator) broadcastPartial() {
 func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
 	// the local context is only set when the coordinator is started; we have to use context.Background() here
 	err := c.listener.RegisterBlockSolidCallback(context.Background(), blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
-	if err != nil {
+	// we can safely ignore ErrAlreadyRegistered, as each parent needs to be processed only once
+	// since ClearBlockSolidCallbacks is called every time the milestone index changes, index will always be the same
+	if err != nil && !errors.Is(err, nodebridge.ErrAlreadyRegistered) {
 		panic(err)
 	}
 }
