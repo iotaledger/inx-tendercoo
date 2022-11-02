@@ -180,7 +180,7 @@ func (c *Coordinator) MilestoneIndex() uint32 {
 
 // ProposeParent proposes blockID as a parent for the milestone with the given index.
 // It blocks until the proposal has been processed by Tendermint.
-func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error {
+func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID iotago.BlockID) error {
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
@@ -192,12 +192,12 @@ func (c *Coordinator) ProposeParent(index uint32, blockID iotago.BlockID) error 
 	}
 
 	// wait until the state matches the proposal index
-	if err := events.WaitForChannelClosed(c.ctx, c.registerStateMilestoneIndexEvent(index)); err != nil {
+	if err := events.WaitForChannelClosed(ctx, c.registerStateMilestoneIndexEvent(index)); err != nil {
 		return err
 	}
 
 	c.log.Debugw("broadcast tx", "parent", parent)
-	res, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	res, err := c.abciClient.BroadcastTxSync(ctx, tx)
 	if err != nil {
 		return err
 	}

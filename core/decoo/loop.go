@@ -61,6 +61,9 @@ func coordinatorLoop(ctx context.Context) {
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
 
+	var cancelPropose context.CancelFunc = func() {}
+	defer cancelPropose()
+
 	var info milestoneInfo
 	for {
 		select {
@@ -70,13 +73,6 @@ func coordinatorLoop(ctx context.Context) {
 			cmi := deps.NodeBridge.ConfirmedMilestoneIndex()
 			if lmi != cmi {
 				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
-				timer.Reset(SyncRetryInterval)
-
-				continue
-			}
-
-			if cmi != info.index {
-				CoreComponent.LogWarnf("node is not synced; confirmed=%d, current coo index=%d; retrying in %s", cmi, info.index, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
 				continue
@@ -93,11 +89,25 @@ func coordinatorLoop(ctx context.Context) {
 			if d := time.Until(info.timestamp.Add(time.Second)); d > 0 {
 				time.Sleep(d)
 			}
+
+			// cancel previous ProposeParent call
+			cancelPropose()
+			// create a new cancellable context for the next ProposeParent call
+			var ctxPropose context.Context
+			ctxPropose, cancelPropose = context.WithCancel(ctx)
+
 			// propose a random tip as parent for the next milestone
+			// use a go routine since the ProposeParent call is blocking
+			index := info.index + 1
 			//nolint:gosec // we don't care about weak random numbers here
-			if err := deps.Coordinator.ProposeParent(info.index+1, tips[rand.Intn(len(tips))]); err != nil {
-				CoreComponent.LogWarnf("failed to propose parent: %s", err)
-			}
+			tip := tips[rand.Intn(len(tips))]
+			go func() {
+				defer cancelPropose()
+
+				if err := deps.Coordinator.ProposeParent(ctxPropose, index, tip); err != nil {
+					CoreComponent.LogWarnf("failed to propose parent: %s", err)
+				}
+			}()
 
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
 			// the timer has not yet fired, so we need to stop it before resetting
