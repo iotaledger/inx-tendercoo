@@ -25,8 +25,9 @@ var (
 		sync.Mutex
 		milestoneInfo
 	}
-	// newMilestoneSignal signals a new confirmed milestone.
-	newMilestoneSignal chan milestoneInfo
+	// confirmedMilestoneSignal signals a new confirmed milestone.
+	confirmedMilestoneSignal chan milestoneInfo
+	triggerNextMilestone     chan struct{}
 )
 
 func initialize() error {
@@ -38,8 +39,8 @@ func initialize() error {
 		confirmedMilestone.index = startIndex - 1
 		confirmedMilestone.timestamp = time.Now()
 		confirmedMilestone.milestoneBlockID = startMilestoneBlockID
-		// trigger newMilestoneSignal to start the loop and issue the first milestone
-		newMilestoneSignal <- confirmedMilestone.milestoneInfo
+		// trigger confirmedMilestoneSignal to start the loop and issue the first milestone
+		confirmedMilestoneSignal <- confirmedMilestone.milestoneInfo
 
 		return nil
 	}
@@ -49,14 +50,14 @@ func initialize() error {
 	if err != nil {
 		return fmt.Errorf("failed to query latest milestone: %w", err)
 	}
-	// trigger newMilestoneSignal to start the loop and issue the next milestone
+	// trigger confirmedMilestoneSignal to start the loop and issue the next milestone
 	processConfirmedMilestone(milestone.Milestone)
 
 	return nil
 }
 
 func coordinatorLoop(ctx context.Context) {
-	// start a timer such that it does not fire before newMilestoneSignal was received
+	// start a timer such that it does not fire before confirmedMilestoneSignal was received
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
 
@@ -98,7 +99,14 @@ func coordinatorLoop(ctx context.Context) {
 				CoreComponent.LogWarnf("failed to propose parent: %s", err)
 			}
 
-		case info = <-newMilestoneSignal: // we have received a new milestone without proposing a parent
+		case <-triggerNextMilestone: // reset the timer to propose a parent right away
+			// the timer has not yet fired, so we need to stop it before resetting
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(0)
+
+		case info = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
 			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
 			deps.Selector.Reset()
 			// the timer has not yet fired, so we need to stop it before resetting
@@ -116,7 +124,10 @@ func coordinatorLoop(ctx context.Context) {
 
 		// when this select is reach, the timer has fired and a milestone was proposed
 		select {
-		case info = <-newMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
+		case <-triggerNextMilestone: // reset the timer to propose a parent right away
+			timer.Reset(0)
+
+		case info = <-confirmedMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
 			// reset the timer to match the interval since the lasts milestone
 			timer.Reset(remainingInterval(info.timestamp))
 
@@ -137,27 +148,7 @@ func processConfirmedMilestone(milestone *iotago.Milestone) {
 	confirmedMilestone.index = milestone.Index
 	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
 	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
-	newMilestoneSignal <- confirmedMilestone.milestoneInfo
-}
-
-func triggerNextMilestone() {
-	// if the lock is already acquired, we are about to signal a new milestone anyway and can skip
-	if confirmedMilestone.TryLock() {
-		defer confirmedMilestone.Unlock()
-
-		// predate the latest milestone to assure that it triggers the next milestone right away
-		info := milestoneInfo{
-			index:            confirmedMilestone.index,
-			timestamp:        confirmedMilestone.timestamp.Add(-Parameters.Interval),
-			milestoneBlockID: confirmedMilestone.milestoneBlockID,
-		}
-
-		// if a new milestone has already been received, there is no need to preemptively trigger it
-		select {
-		case newMilestoneSignal <- info:
-		default:
-		}
-	}
+	confirmedMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
 func remainingInterval(ts time.Time) time.Duration {
