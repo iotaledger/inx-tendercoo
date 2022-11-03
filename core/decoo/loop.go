@@ -167,6 +167,7 @@ func getMilestoneIndex() (uint32, uint32) {
 	nodeStatus := deps.NodeBridge.NodeStatus()
 	lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
 	cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
+
 	return lmi, cmi
 }
 
