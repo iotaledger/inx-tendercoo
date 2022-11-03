@@ -70,9 +70,17 @@ func coordinatorLoop(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
+			lmi, cmi := getMilestoneIndex()
+			// check that the confirmed milestone of the node matches the current index
+			// if not we can skip and wait for the corresponding onConfirmedMilestoneChanged to be processed
+			if cmi != info.index {
+				CoreComponent.LogWarnf("behind the node; confirmed=%d, current coo index=%d", cmi, info.index)
+
+				continue
+			}
 			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
-			deps.NodeBridge.IsNodeSynced()
-			if lmi, cmi := deps.NodeBridge.LatestMilestoneIndex(), deps.NodeBridge.ConfirmedMilestoneIndex(); lmi != cmi {
+			// we cannot use deps.NodeBridge.IsNodeSynced() here, as this is always false during bootstrapping
+			if lmi != cmi {
 				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
@@ -152,6 +160,14 @@ func processConfirmedMilestone(milestone *iotago.Milestone) {
 	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
 	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
 	confirmedMilestoneSignal <- confirmedMilestone.milestoneInfo
+}
+
+func getMilestoneIndex() (uint32, uint32) {
+	// store the nodeStatus to prevent race-conditions between the two GetMilestoneIndex calls
+	nodeStatus := deps.NodeBridge.NodeStatus()
+	lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
+	cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
+	return lmi, cmi
 }
 
 func resetRunningTimer(timer *time.Timer, d time.Duration) {
