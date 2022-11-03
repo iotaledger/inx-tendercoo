@@ -61,6 +61,7 @@ func coordinatorLoop(ctx context.Context) {
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
 
+	// initialize the cancel function to NOP until the first ProposeParent has been called
 	var cancelPropose context.CancelFunc = func() {}
 	defer cancelPropose()
 
@@ -68,10 +69,8 @@ func coordinatorLoop(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
-			// check that the node is synced
-			lmi := deps.NodeBridge.LatestMilestoneIndex()
-			cmi := deps.NodeBridge.ConfirmedMilestoneIndex()
-			if lmi != cmi {
+			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
+			if lmi, cmi := deps.NodeBridge.LatestMilestoneIndex(), deps.NodeBridge.ConfirmedMilestoneIndex(); lmi != cmi {
 				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
@@ -110,21 +109,13 @@ func coordinatorLoop(ctx context.Context) {
 			}()
 
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
-			// the timer has not yet fired, so we need to stop it before resetting
-			if !timer.Stop() {
-				<-timer.C
-			}
-			timer.Reset(0)
+			resetRunningTimer(timer, 0)
 
 		case info = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
 			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
 			deps.Selector.Reset()
-			// the timer has not yet fired, so we need to stop it before resetting
-			if !timer.Stop() {
-				<-timer.C
-			}
-			// reset the timer to match the interval since the lasts milestone
-			timer.Reset(remainingInterval(info.timestamp))
+			// reset the timer to fire when the next milestone is due
+			resetRunningTimer(timer, remainingInterval(info.timestamp))
 
 			continue
 
@@ -161,8 +152,16 @@ func processConfirmedMilestone(milestone *iotago.Milestone) {
 	confirmedMilestoneSignal <- confirmedMilestone.milestoneInfo
 }
 
-func remainingInterval(ts time.Time) time.Duration {
-	d := Parameters.Interval - time.Since(ts)
+func resetRunningTimer(timer *time.Timer, d time.Duration) {
+	// the timer has not yet fired, so we need to stop it before resetting
+	if !timer.Stop() {
+		<-timer.C
+	}
+	timer.Reset(d)
+}
+
+func remainingInterval(t time.Time) time.Duration {
+	d := Parameters.Interval - time.Since(t)
 	if d < 0 {
 		d = 0
 	}
