@@ -62,7 +62,7 @@ func coordinatorLoop(ctx context.Context) {
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
 
-	// initialize the cancel function to NOP until the first ProposeParent has been called
+	// initialize the cancel function to NOP until the first proposeParent has been called
 	var cancelPropose context.CancelFunc = func() {}
 	defer cancelPropose()
 
@@ -99,24 +99,15 @@ func coordinatorLoop(ctx context.Context) {
 				time.Sleep(d)
 			}
 
-			// cancel previous ProposeParent call
+			// cancel previous proposeParent call
 			cancelPropose()
-			// create a new cancellable context for the next ProposeParent call
+			// create a new cancellable context for the next proposeParent call
 			var ctxPropose context.Context
 			ctxPropose, cancelPropose = context.WithCancel(ctx)
 
-			// propose a random tip as parent for the next milestone
-			// use a go routine since the ProposeParent call is blocking
-			index := info.index + 1
+			// propose a random tip as a parent for the next milestone
 			//nolint:gosec // we don't care about weak random numbers here
-			tip := tips[rand.Intn(len(tips))]
-			go func() {
-				defer cancelPropose()
-
-				if err := deps.Coordinator.ProposeParent(ctxPropose, index, tip); err != nil {
-					CoreComponent.LogWarnf("failed to propose parent: %s", err)
-				}
-			}()
+			go proposeParent(ctxPropose, cancelPropose, info.index+1, tips[rand.Intn(len(tips))])
 
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
 			resetRunningTimer(timer, 0)
@@ -169,6 +160,14 @@ func getMilestoneIndex() (uint32, uint32) {
 	cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
 
 	return lmi, cmi
+}
+
+func proposeParent(ctx context.Context, cancel context.CancelFunc, index uint32, tip iotago.BlockID) {
+	defer cancel()
+
+	if err := deps.Coordinator.ProposeParent(ctx, index, tip); err != nil {
+		CoreComponent.LogWarnf("failed to propose parent: %s", err)
+	}
 }
 
 func resetRunningTimer(timer *time.Timer, d time.Duration) {
