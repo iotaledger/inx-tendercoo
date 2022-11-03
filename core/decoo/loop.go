@@ -27,7 +27,8 @@ var (
 	}
 	// confirmedMilestoneSignal signals a new confirmed milestone.
 	confirmedMilestoneSignal chan milestoneInfo
-	triggerNextMilestone     chan struct{}
+	// triggerNextMilestone signals a preemptive milestone trigger to avoid overflows in the tip selector.
+	triggerNextMilestone chan struct{}
 )
 
 func initialize() error {
@@ -70,6 +71,7 @@ func coordinatorLoop(ctx context.Context) {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
 			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
+			deps.NodeBridge.IsNodeSynced()
 			if lmi, cmi := deps.NodeBridge.LatestMilestoneIndex(), deps.NodeBridge.ConfirmedMilestoneIndex(); lmi != cmi {
 				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)

@@ -291,6 +291,7 @@ func configure() error {
 			select {
 			case triggerNextMilestone <- struct{}{}:
 			default:
+				// if the channel is full, there is already one unprocessed trigger, and we don't need to signal again
 			}
 		}
 	})
