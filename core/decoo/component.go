@@ -275,7 +275,8 @@ func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.
 }
 
 func configure() error {
-	newMilestoneSignal = make(chan milestoneInfo, 1)
+	confirmedMilestoneSignal = make(chan milestoneInfo, 1)
+	triggerNextMilestone = make(chan struct{}, 1)
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
@@ -287,7 +288,11 @@ func configure() error {
 		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
 			CoreComponent.LogInfo("trigger next milestone preemptively")
-			triggerNextMilestone()
+			select {
+			case triggerNextMilestone <- struct{}{}:
+			default:
+				// if the channel is full, there is already one unprocessed trigger, and we don't need to signal again
+			}
 		}
 	})
 

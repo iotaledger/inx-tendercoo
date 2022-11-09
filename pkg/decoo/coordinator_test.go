@@ -47,10 +47,10 @@ func TestSingleValidator(t *testing.T) {
 		require.NoError(t, c.Start(abci))
 
 		for i := uint32(1); i < 10; i++ {
-			require.NoError(t, c.ProposeParent(i, inx.LatestMilestoneBlockID()))
+			require.NoError(t, c.ProposeParent(context.Background(), i, inx.LatestMilestoneBlockID()))
 			require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == i }, waitFor, tick)
 		}
-		require.NoError(t, c.ProposeParent(inx.LatestMilestoneIndex()+1, inx.LatestMilestoneBlockID()))
+		require.NoError(t, c.ProposeParent(context.Background(), inx.LatestMilestoneIndex()+1, inx.LatestMilestoneBlockID()))
 		require.NoError(t, c.Stop())
 	})
 
@@ -67,7 +67,7 @@ func TestSingleValidator(t *testing.T) {
 		require.NoError(t, c.Start(abci))
 
 		index := inx.LatestMilestoneIndex() + 1
-		require.NoError(t, c.ProposeParent(index, inx.LatestMilestoneBlockID()))
+		require.NoError(t, c.ProposeParent(context.Background(), index, inx.LatestMilestoneBlockID()))
 		require.Eventually(t, func() bool { return inx.LatestMilestoneIndex() == index }, waitFor, tick)
 		require.NoError(t, c.Stop())
 	})
@@ -107,7 +107,7 @@ func TestManyValidator(t *testing.T) {
 		// submit the block and propose as parent
 		parentID, err := inx.SubmitBlock(context.Background(), parent)
 		require.NoError(t, err)
-		require.NoError(t, c.ProposeParent(1, parentID))
+		require.NoError(t, c.ProposeParent(context.Background(), 1, parentID))
 	}
 
 	// check that a new milestone gets issued
