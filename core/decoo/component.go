@@ -148,8 +148,9 @@ func provide(c *dig.Container) error {
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		Coordinator *decoo.Coordinator
-		NodeBridge  *nodebridge.NodeBridge
+		Coordinator    *decoo.Coordinator
+		NodeBridge     *nodebridge.NodeBridge
+		TangleListener *nodebridge.TangleListener
 	}
 	if err := c.Provide(func(deps tendermintDeps) (*tmnode.Node, error) {
 		CoreComponent.LogInfo("Providing Tendermint ...")
@@ -170,7 +171,7 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 		// initialize the coordinator compatible with the configured Tendermint state
-		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, conf); err != nil {
+		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
 			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
 		}
 
@@ -224,8 +225,11 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
-func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, conf *config.Config) error {
+func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, listener *nodebridge.TangleListener, conf *config.Config) error {
 	if bootstrap {
+		// assure that the startMilestoneBlockID is solid before bootstrapping the coordinator
+		waitUntilBlockSolid(listener, startMilestoneBlockID)
+
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
 			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
 				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
@@ -234,6 +238,19 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		}
 
 		return nil
+	}
+
+	// creating a new Tendermint node, starts the replay of blocks
+	// in order to correctly validate those Tendermint blocks, we need to be synced
+	for {
+		nodeStatus := nodeBridge.NodeStatus()
+		lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
+		cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
+		if lmi > 0 && lmi == cmi {
+			break
+		}
+		CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
+		time.Sleep(SyncRetryInterval)
 	}
 
 	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
@@ -270,6 +287,14 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	}
 
 	return nil
+}
+
+func waitUntilBlockSolid(listener *nodebridge.TangleListener, blockID iotago.BlockID) {
+	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+	defer cancel()
+
+	CoreComponent.LogInfof("waiting for block %s to become solid", blockID)
+	<-listener.RegisterBlockSolidEvent(ctx, blockID)
 }
 
 func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
