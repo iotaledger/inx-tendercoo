@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"sync"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
@@ -78,6 +79,7 @@ type Coordinator struct {
 
 	abciClient ABCIClient
 	started    atomic.Bool
+	stopOnce   sync.Once
 }
 
 // New creates a new Coordinator.
@@ -158,9 +160,11 @@ func (c *Coordinator) Start(client ABCIClient) error {
 
 // Stop stops the coordinator.
 func (c *Coordinator) Stop() error {
-	c.started.Store(false)
-	c.cancel()
-	c.broadcastQueue.Stop()
+	c.stopOnce.Do(func() {
+		c.started.Store(false)
+		c.cancel()
+		c.broadcastQueue.Stop()
+	})
 
 	return nil
 }
@@ -168,6 +172,8 @@ func (c *Coordinator) Stop() error {
 // Wait waits until the coordinator is stopped.
 func (c *Coordinator) Wait() {
 	<-c.ctx.Done()
+	// call Stop() to assure that Wait() does not return before the termination Stop()
+	_ = c.Stop()
 }
 
 // PublicKey returns the milestone public key of the instance.
