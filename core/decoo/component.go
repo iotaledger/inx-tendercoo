@@ -22,11 +22,12 @@ import (
 
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/logger"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
-	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
+	"github.com/iotaledger/inx-tendercoo/pkg/selector"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/keymanager"
@@ -81,6 +82,7 @@ func init() {
 var (
 	CoreComponent *app.CoreComponent
 	deps          dependencies
+	log           *logger.Logger
 
 	// config flags.
 	bootstrap             bool
@@ -94,10 +96,17 @@ var (
 	onConfirmedMilestoneChanged *events.Closure
 )
 
+type Coordinator interface {
+	Start(client decoo.ABCIClient) error
+	Stop() error
+
+	ProposeParent(context.Context, uint32, iotago.BlockID) error
+}
+
 type dependencies struct {
 	dig.In
-	Coordinator    *decoo.Coordinator
-	Selector       *mselection.HeaviestSelector
+	Coordinator    Coordinator
+	Selector       selector.TipSelector
 	TendermintNode *tmnode.Node
 	NodeBridge     *nodebridge.NodeBridge
 	TangleListener *nodebridge.TangleListener
@@ -205,8 +214,8 @@ func provide(c *dig.Container) error {
 	}
 
 	// provide the heaviest branch selection strategy
-	if err := c.Provide(func() *mselection.HeaviestSelector {
-		return mselection.New(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
+	if err := c.Provide(func() *selector.Heaviest {
+		return selector.NewHeaviest(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
 	}); err != nil {
 		return err
 	}
@@ -312,6 +321,8 @@ func configure() error {
 }
 
 func run() error {
+	log = CoreComponent.Logger()
+
 	if err := CoreComponent.Daemon().BackgroundWorker(tangleListenerWorkerName, func(ctx context.Context) {
 		CoreComponent.LogInfo("Starting " + tangleListenerWorkerName + " ... done")
 		deps.TangleListener.Run(ctx)

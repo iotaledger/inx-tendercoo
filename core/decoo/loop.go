@@ -70,27 +70,29 @@ func coordinatorLoop(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
-			lmi, cmi := getMilestoneIndex()
-			// check that the confirmed milestone of the node matches the current index
-			// if not we can skip and wait for the corresponding onConfirmedMilestoneChanged to be processed
-			if cmi != info.index {
-				CoreComponent.LogWarnf("behind the node; confirmed=%d, current coo index=%d", cmi, info.index)
+			/*
+				lmi, cmi := getMilestoneIndex()
+				// check that the confirmed milestone of the node matches the current index
+				// if not we can skip and wait for the corresponding onConfirmedMilestoneChanged to be processed
+				if cmi != info.index {
+					CoreComponent.LogWarnf("behind the node; confirmed=%d, current coo index=%d", cmi, info.index)
 
-				continue
-			}
-			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
-			// we cannot use deps.NodeBridge.IsNodeSynced() here, as this is always false during bootstrapping
-			if lmi != cmi {
-				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
-				timer.Reset(SyncRetryInterval)
+					continue
+				}
+				// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
+				// we cannot use deps.NodeBridge.IsNodeSynced() here, as this is always false during bootstrapping
+				if lmi != cmi {
+					CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
+					timer.Reset(SyncRetryInterval)
 
-				continue
-			}
+					continue
+				}
+			*/
 
-			CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
+			log.Infof("proposing parent for milestone %d", info.index+1)
 			tips, err := deps.Selector.SelectTips(1)
 			if err != nil {
-				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
+				log.Warnf("defaulting to last milestone as tip: %s", err)
 				// use the previous milestone block as fallback
 				tips = iotago.BlockIDs{info.milestoneBlockID}
 			}
@@ -116,7 +118,9 @@ func coordinatorLoop(ctx context.Context) {
 			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
 			deps.Selector.Reset()
 			// reset the timer to fire when the next milestone is due
-			resetRunningTimer(timer, remainingInterval(info.timestamp))
+			d := remainingInterval(info.timestamp)
+			log.Debugf("propose next in %s", d)
+			resetRunningTimer(timer, d)
 
 			continue
 
@@ -131,7 +135,9 @@ func coordinatorLoop(ctx context.Context) {
 
 		case info = <-confirmedMilestoneSignal: // the new milestone is confirmed, we can now reset the timer
 			// reset the timer to match the interval since the lasts milestone
-			timer.Reset(remainingInterval(info.timestamp))
+			d := remainingInterval(info.timestamp)
+			log.Debugf("%s propose next in %s", info.timestamp, d)
+			timer.Reset(d)
 
 		case <-ctx.Done(): // end the loop
 			return
