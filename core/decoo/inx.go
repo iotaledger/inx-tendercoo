@@ -2,23 +2,24 @@ package decoo
 
 import (
 	"context"
-	"crypto"
 	"errors"
 	"fmt"
-	"io"
+	"strings"
 
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
-	"github.com/iotaledger/iota.go/v3/merklehasher"
 )
 
-//nolint:nosnakecase // crypto package uses underscores
-var merkle = merklehasher.NewHasher(crypto.BLAKE2b_256)
+// ErrInvalidIndex is returned when the provided milestone index is invalid.
+var ErrInvalidIndex = errors.New("invalid milestone index")
 
 // INXClient is a wrapper around nodebridge.NodeBridge to provide the functionality used by the coordinator.
 type INXClient struct{ *nodebridge.NodeBridge }
+
+// This must match the hornet error when the index of ComputeWhiteFlag is invalid.
+const errTextComputeWhiteFlagInvalidIndex = "node is not synchronized"
 
 // INXClient must implement the corresponding interface.
 var _ decoo.INXClient = (*INXClient)(nil)
@@ -39,15 +40,16 @@ func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
 }
 
 // ComputeWhiteFlag returns the white-flag merkle tree hashes for the corresponding milestone.
+// The caller needs to make sure that parents are all solid.
 func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) ([]byte, []byte, error) {
-	latest, err := c.LatestMilestone()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query latest milestone: %w", err)
+	cmi := c.ConfirmedMilestoneIndex()
+	if index > cmi+1 {
+		return nil, nil, ErrInvalidIndex
 	}
 
-	// if the node already contains that particular milestone, query it
-	if latest != nil && latest.Index >= index {
-		return c.recomputeWhiteFlag(ctx, index)
+	// for a past milestone we don't need to compute anything and can query the existing information
+	if cmi > 0 && index <= cmi {
+		return c.queryWhiteFlag(ctx, index, parents)
 	}
 
 	req := &inx.WhiteFlagRequest{
@@ -58,41 +60,40 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestam
 	}
 	res, err := c.Client().ComputeWhiteFlag(ctx, req)
 	if err != nil {
+		// there could be a race condition, where ComputeWhiteFlag fails as the cmi got updated in the meantime
+		// in this case, we check for that particular error message and query
+		if strings.Contains(err.Error(), errTextComputeWhiteFlagInvalidIndex) {
+			return c.queryWhiteFlag(ctx, index, parents)
+		}
+
 		return nil, nil, err
 	}
 
 	return res.GetMilestoneInclusionMerkleRoot(), res.GetMilestoneAppliedMerkleRoot(), nil
 }
 
-func (c *INXClient) recomputeWhiteFlag(ctx context.Context, index uint32) ([]byte, []byte, error) {
-	req := &inx.MilestoneRequest{
-		MilestoneIndex: index,
-	}
-	stream, err := c.Client().ReadMilestoneConeMetadata(ctx, req)
+func (c *INXClient) queryWhiteFlag(ctx context.Context, index uint32, parents iotago.BlockIDs) ([]byte, []byte, error) {
+	ms, err := c.Milestone(ctx, index)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to query milestone %d: %w", index, err)
+	}
+	// do a sanity check for the milestone parents
+	if !equal(ms.Milestone.Parents, parents) {
+		return nil, nil, fmt.Errorf("parents to not matach milestone %d", index)
 	}
 
-	// extract block IDs from milestone cone
-	var includedBlockIDs, appliedBlockIDs []iotago.BlockID
-	for {
-		payload, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
+	return ms.Milestone.InclusionMerkleRoot[:], ms.Milestone.AppliedMerkleRoot[:], nil
+}
 
-			return nil, nil, err
-		}
-
-		blockID := payload.UnwrapBlockID()
-		includedBlockIDs = append(includedBlockIDs, blockID)
-		// BlockMetadata_INCLUDED is set when the block contains a transaction that mutates the ledger
-		//nolint:nosnakecase // gRPC uses underscores
-		if payload.GetLedgerInclusionState() == inx.BlockMetadata_LEDGER_INCLUSION_STATE_INCLUDED {
-			appliedBlockIDs = append(appliedBlockIDs, blockID)
+func equal(a, b iotago.BlockIDs) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
 	}
 
-	return merkle.HashBlockIDs(includedBlockIDs), merkle.HashBlockIDs(appliedBlockIDs), nil
+	return true
 }
