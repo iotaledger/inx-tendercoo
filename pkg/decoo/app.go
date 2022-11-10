@@ -76,7 +76,7 @@ func (c *Coordinator) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCh
 
 // BeginBlock is the first method called for each new block.
 func (c *Coordinator) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
-	c.log.Debugw("ABCI BeginBlock", "req", req)
+	defer c.stopOnPanic()
 
 	if err := c.cms.ValidateHeight(req.Header.Height); err != nil {
 		panic(err)
@@ -120,6 +120,7 @@ func (c *Coordinator) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Respon
 // It is called after all transactions for the current block have been delivered, prior to the block's Commit message.
 // Updates to the consensus parameters can only be updated in EndBlock.
 func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
+	defer c.stopOnPanic()
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
@@ -174,6 +175,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 // Data must return the hash of the state after all changes from this block have been applied.
 // It will be used to validate consistency between the applications.
 func (c *Coordinator) Commit() abcitypes.ResponseCommit {
+	defer c.stopOnPanic()
 	c.checkState.Lock()
 	defer c.checkState.Unlock()
 	c.deliverState.Lock()
@@ -229,6 +231,17 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	c.cms.Commit(&c.deliverState)
 
 	return abcitypes.ResponseCommit{Data: c.cms.LastCommitInfo().Hash}
+}
+
+// stopOnPanic assures that the coordinator is stopped when a panic occurred.
+// This should be deferred in any method for which Tendermint recovers the panic.
+func (c *Coordinator) stopOnPanic() {
+	if e := recover(); e != nil {
+		c.log.Warn("stopping after panic")
+		_ = c.Stop()
+		// the panic is recovered by Tendermint, so we need to re-raise it
+		panic(e)
+	}
 }
 
 func (c *Coordinator) broadcastPartial() {

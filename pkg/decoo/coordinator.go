@@ -165,6 +165,11 @@ func (c *Coordinator) Stop() error {
 	return nil
 }
 
+// Wait waits until the coordinator is stopped.
+func (c *Coordinator) Wait() {
+	<-c.ctx.Done()
+}
+
 // PublicKey returns the milestone public key of the instance.
 func (c *Coordinator) PublicKey() ed25519.PublicKey {
 	return c.committee.PublicKey()

@@ -11,6 +11,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
@@ -198,6 +199,15 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
+
+		// make sure that Tendermint is stopped gracefully as soon as the coordinator is stopped first
+		go func() {
+			deps.Coordinator.Wait()
+			if err := node.Stop(); err != nil && errors.Is(err, service.ErrAlreadyStopped) {
+				CoreComponent.LogWarnf("failed to stop Tendermint: %s", err)
+			}
+			CoreComponent.LogPanic("Coordinator unexpectedly stopped")
+		}()
 
 		return node, nil
 	}); err != nil {
