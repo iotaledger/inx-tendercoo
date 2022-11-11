@@ -339,13 +339,9 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 }
 
 func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Milestone) error {
-	// skip, if ms is not the newest milestone
-	latest, err := c.inxClient.LatestMilestone()
-	if err != nil {
-		return fmt.Errorf("failed to get latest milestone: %w", err)
-	}
-	if latest != nil && ms.Index <= latest.Index {
-		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", latest.Index)
+	// skip, if ms is not the latest milestone
+	if lmi := c.inxClient.LatestMilestoneIndex(); ms.Index <= lmi {
+		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", lmi)
 
 		return nil
 	}

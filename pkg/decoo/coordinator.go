@@ -35,6 +35,7 @@ var (
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
+	LatestMilestoneIndex() uint32
 
 	BlockMetadata(context.Context, iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
