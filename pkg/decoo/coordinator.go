@@ -39,7 +39,7 @@ type INXClient interface {
 
 	BlockMetadata(context.Context, iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
-	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
+	ComputeWhiteFlag(ctx context.Context, index uint32, ts uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
 }
 
 // TangleListener contains the functions used to listen to Tangle changes.
@@ -221,7 +221,7 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 }
 
 func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	latest, err := c.inxClient.LatestMilestone()
+	latest, err := c.inxLatestMilestone()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
 	}

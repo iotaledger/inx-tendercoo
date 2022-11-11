@@ -2,7 +2,6 @@ package decoo
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -205,7 +204,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// submit the milestone in a separate go routine to unlock the Tendermint state as soon as possible
 		ms := *c.deliverState.Milestone
 		go func() {
-			if err := c.submitMilestoneBlock(c.ctx, &ms); err != nil {
+			if err := c.submitMilestoneBlock(&ms); err != nil {
 				panic(err)
 			}
 		}()
@@ -220,7 +219,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		c.deliverState.Reset(state)
 
 		// the callbacks are no longer relevant
-		c.listener.ClearBlockSolidCallbacks()
+		c.inxClearBlockSolidCallbacks()
 		// trigger an event for the new milestone index
 		c.stateMilestoneIndexSyncEvent.Trigger(state.MilestoneIndex)
 	}
@@ -262,8 +261,7 @@ func (c *Coordinator) broadcastPartial() {
 }
 
 func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
-	// the local context is only set when the coordinator is started; we have to use context.Background() here
-	err := c.listener.RegisterBlockSolidCallback(context.Background(), blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+	err := c.inxRegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
 	// we can safely ignore ErrAlreadyRegistered, as each parent needs to be processed only once
 	// since ClearBlockSolidCallbacks is called every time the milestone index changes, index will always be the same
 	if err != nil && !errors.Is(err, nodebridge.ErrAlreadyRegistered) {
@@ -315,9 +313,7 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 
 	timestamp := uint32(c.deliverState.blockHeader.Time.Unix())
 
-	// the local context is only set when the coordinator gets started; so we have to use context.Background() here
-	inclMerkleRoot, appliedMerkleRoot, err := c.inxClient.ComputeWhiteFlag(
-		context.Background(),
+	inclMerkleRoot, appliedMerkleRoot, err := c.inxComputeWhiteFlag(
 		c.deliverState.MilestoneIndex,
 		timestamp,
 		parents,
@@ -338,9 +334,9 @@ func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {
 	c.deliverState.Milestone.Metadata = c.deliverState.Metadata()
 }
 
-func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Milestone) error {
+func (c *Coordinator) submitMilestoneBlock(ms *iotago.Milestone) error {
 	// skip, if ms is not the latest milestone
-	if lmi := c.inxClient.LatestMilestoneIndex(); ms.Index <= lmi {
+	if lmi := c.inxLatestMilestoneIndex(); ms.Index <= lmi {
 		c.log.Debugw("milestone skipped", "index", ms.Index, "latest", lmi)
 
 		return nil
@@ -357,10 +353,10 @@ func (c *Coordinator) submitMilestoneBlock(ctx context.Context, ms *iotago.Miles
 		return fmt.Errorf("serializing the block failed: %w", err)
 	}
 
-	latestMilestoneBlockID, err := c.inxClient.SubmitBlock(ctx, block)
+	latestMilestoneBlockID, err := c.inxSubmitBlock(block)
 	if err != nil {
 		// if SubmitBlock failed, check whether block is still present in the node, submitted by a different validator
-		if _, blockErr := c.inxClient.BlockMetadata(ctx, block.MustID()); blockErr != nil {
+		if _, blockErr := c.inxBlockMetadata(block.MustID()); blockErr != nil {
 			// only report an error, if we couldn't submit, and it is not present
 			return fmt.Errorf("submitting the milestone failed: %w", err)
 		}
