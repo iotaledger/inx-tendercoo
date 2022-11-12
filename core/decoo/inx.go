@@ -39,7 +39,7 @@ func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
 }
 
 // ComputeWhiteFlag returns the white-flag merkle tree hashes for the corresponding milestone.
-func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, ts uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) ([]byte, []byte, error) {
+func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) ([]byte, []byte, error) {
 	latest, err := c.LatestMilestone()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query latest milestone: %w", err)
@@ -52,7 +52,7 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, ts uint3
 
 	req := &inx.WhiteFlagRequest{
 		MilestoneIndex:      index,
-		MilestoneTimestamp:  ts,
+		MilestoneTimestamp:  timestamp,
 		Parents:             inx.NewBlockIds(parents),
 		PreviousMilestoneId: inx.NewMilestoneId(previousMilestoneID),
 	}
