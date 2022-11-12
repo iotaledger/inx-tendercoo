@@ -201,9 +201,14 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
 
-		// make sure that Tendermint is stopped gracefully as soon as the coordinator is stopped first
+		// make sure that Tendermint is stopped gracefully when the coordinator terminates unexpectedly
 		go func() {
 			deps.Coordinator.Wait()
+			// if the daemon is stopped, the coordinator stop was expectedly
+			if CoreComponent.Daemon().IsStopped() {
+				return
+			}
+			// otherwise stop the Tendermint node and panic
 			if err := node.Stop(); err != nil && errors.Is(err, service.ErrAlreadyStopped) {
 				CoreComponent.LogWarnf("failed to stop Tendermint: %s", err)
 			}
