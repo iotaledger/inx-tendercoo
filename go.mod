@@ -3,7 +3,7 @@ module github.com/iotaledger/inx-tendercoo
 go 1.19
 
 require (
-	github.com/bits-and-blooms/bitset v1.3.3
+	github.com/bits-and-blooms/bitset v1.4.0
 	github.com/iotaledger/hive.go/core v1.0.0-rc.1
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-rc.1
 	github.com/iotaledger/inx-app v1.0.0-rc.1
@@ -15,7 +15,7 @@ require (
 	go.uber.org/atomic v1.10.0
 	go.uber.org/dig v1.15.0
 	go.uber.org/zap v1.23.0
-	golang.org/x/crypto v0.2.0
+	golang.org/x/crypto v0.3.0
 	google.golang.org/protobuf v1.28.2-0.20220831092852-f930b1dc76e8
 )
 
