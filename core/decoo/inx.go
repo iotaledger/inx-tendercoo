@@ -79,7 +79,7 @@ func (c *INXClient) queryWhiteFlag(ctx context.Context, index uint32, parents io
 	}
 	// do a sanity check for the milestone parents
 	if !equal(ms.Milestone.Parents, parents) {
-		return nil, nil, fmt.Errorf("parents to not matach milestone %d", index)
+		return nil, nil, fmt.Errorf("parents to not match milestone %d", index)
 	}
 
 	return ms.Milestone.InclusionMerkleRoot[:], ms.Milestone.AppliedMerkleRoot[:], nil
