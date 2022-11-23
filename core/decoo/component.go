@@ -134,7 +134,8 @@ func provide(c *dig.Container) error {
 		t := int(deps.NodeBridge.NodeConfig.GetMilestonePublicKeyCount())
 
 		committee := decoo.NewCommitteeFromManager(coordinatorPrivateKey, n, t, keyManager)
-		coo, err := decoo.New(committee, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
+		maxRetainBlocks := Parameters.Tendermint.MaxRetainBlocks
+		coo, err := decoo.New(committee, maxRetainBlocks, &INXClient{deps.NodeBridge}, deps.TangleListener, CoreComponent.Logger())
 		if err != nil {
 			return nil, fmt.Errorf("failed to provide coordinator: %w", err)
 		}
