@@ -26,7 +26,7 @@ type ParametersDefinition struct {
 		LogLevel        string `default:"info" usage:"logging level of the Tendermint Core; cannot be lower than the global level"`
 		GenesisTime     int64  `default:"0" usage:"time the blockchain started or will start in Unix time using seconds"`
 		ChainID         string `default:"tendercoo" usage:"identifier of the blockchain; every chain must have a unique ID"`
-		MaxRetainBlocks uint   `default:"0" usage:"maximum number of blocks to keep in the database"`
+		MaxRetainBlocks uint   `default:"0" usage:"maximum number of blocks to keep in the database (0=no pruning)"`
 
 		Peers      []string                    `usage:"addresses of the Tendermint nodes to connect to (ID@Host:Port)"`
 		Validators map[string]ValidatorsConfig `noflag:"true" usage:"set of validators"`
