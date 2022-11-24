@@ -289,7 +289,7 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 		}
 
 		// try the previous milestone
-		ms, err = getMilestone(nodeBridge, state.MilestoneIndex-1)
+		ms, err = getMilestone(ctx, nodeBridge, state.MilestoneIndex-1)
 		if err != nil {
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
@@ -317,8 +317,8 @@ func waitUntilBlockSolid(ctx context.Context, listener *nodebridge.TangleListene
 	}
 }
 
-func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+func getMilestone(ctx context.Context, nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
+	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
 	defer cancel()
 
 	ms, err := nodeBridge.Milestone(ctx, index)
