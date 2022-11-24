@@ -180,6 +180,9 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	c.deliverState.Lock()
 	defer c.deliverState.Unlock()
 
+	header := c.deliverState.blockHeader
+	retainHeight := c.retainHeight(header.Height)
+
 	// create and broadcast our partial signature
 	if c.deliverState.Milestone != nil && // if we have an essence to sign
 		len(c.deliverState.SignaturesByIssuer) < c.committee.T() && // and there are not enough partial signatures yet
@@ -229,7 +232,24 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	// update the last commit info
 	c.cms.Commit(&c.deliverState)
 
-	return abcitypes.ResponseCommit{Data: c.cms.LastCommitInfo().Hash}
+	return abcitypes.ResponseCommit{
+		Data:         c.cms.LastCommitInfo().Hash,
+		RetainHeight: retainHeight,
+	}
+}
+
+func (c *Coordinator) retainHeight(commitHeight int64) int64 {
+	// pruning is disabled if maxRetainBlocks is zero
+	if c.maxRetainBlocks == 0 {
+		return 0
+	}
+
+	v := commitHeight - int64(c.maxRetainBlocks)
+	if v <= 0 {
+		return 0
+	}
+
+	return v
 }
 
 // stopOnPanic assures that the coordinator is stopped when a panic occurred.

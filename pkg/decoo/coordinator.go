@@ -60,7 +60,14 @@ type ProtocolParametersFunc = func() *iotago.ProtocolParameters
 type Coordinator struct {
 	abcitypes.BaseApplication // act as a ABCI application for Tendermint
 
+	// committee defines the committee of validators.
 	committee *Committee
+
+	// maxRetainBlocks defines the block height offset from the current block being committed,
+	// such that all blocks past this offset are pruned.
+	// A value of 0 indicates that no blocks should be pruned.
+	maxRetainBlocks uint
+
 	inxClient INXClient
 	listener  TangleListener
 	log       *logger.Logger
@@ -84,7 +91,7 @@ type Coordinator struct {
 }
 
 // New creates a new Coordinator.
-func New(committee *Committee, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
+func New(committee *Committee, maxRetainBlocks uint, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be space for at least one honest parent in each milestone
 	if committee.F()+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -97,6 +104,7 @@ func New(committee *Committee, inxClient INXClient, listener TangleListener, log
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Coordinator{
 		committee:                    committee,
+		maxRetainBlocks:              maxRetainBlocks,
 		inxClient:                    inxClient,
 		listener:                     listener,
 		log:                          log,
