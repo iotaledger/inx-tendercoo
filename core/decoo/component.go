@@ -209,7 +209,7 @@ func provide(c *dig.Container) error {
 				return
 			}
 			// otherwise stop the Tendermint node and panic
-			if err := node.Stop(); err != nil && errors.Is(err, service.ErrAlreadyStopped) {
+			if err := node.Stop(); err != nil && !errors.Is(err, service.ErrAlreadyStopped) {
 				CoreComponent.LogWarnf("failed to stop Tendermint: %s", err)
 			}
 			CoreComponent.LogPanic("Coordinator unexpectedly stopped")
