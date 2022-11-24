@@ -23,6 +23,7 @@ import (
 
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/timeutil"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
@@ -171,8 +172,10 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
-		// initialize the coordinator compatible with the configured Tendermint state
-		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
+
+		// initialize the coordinator matching the configured Tendermint state
+		ctx := CoreComponent.Daemon().ContextStopped()
+		if err := initCoordinator(ctx, deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
 			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
 		}
 
@@ -231,10 +234,12 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
-func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, listener *nodebridge.TangleListener, conf *config.Config) error {
+func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, listener *nodebridge.TangleListener, conf *config.Config) error {
 	if bootstrap {
 		// assure that the startMilestoneBlockID is solid before bootstrapping the coordinator
-		waitUntilBlockSolid(listener, startMilestoneBlockID)
+		if err := waitUntilBlockSolid(ctx, listener, startMilestoneBlockID); err != nil {
+			return err
+		}
 
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
 			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
@@ -256,7 +261,9 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 			break
 		}
 		CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
-		time.Sleep(SyncRetryInterval)
+		if !timeutil.Sleep(ctx, SyncRetryInterval) {
+			return ctx.Err()
+		}
 	}
 
 	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
@@ -295,12 +302,19 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	return nil
 }
 
-func waitUntilBlockSolid(listener *nodebridge.TangleListener, blockID iotago.BlockID) {
-	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+func waitUntilBlockSolid(ctx context.Context, listener *nodebridge.TangleListener, blockID iotago.BlockID) error {
+	inxContext, cancel := context.WithTimeout(ctx, INXTimeout)
 	defer cancel()
 
 	CoreComponent.LogInfof("waiting for block %s to become solid", blockID)
-	<-listener.RegisterBlockSolidEvent(ctx, blockID)
+
+	solidEvent := listener.RegisterBlockSolidEvent(inxContext, blockID)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-solidEvent:
+		return nil
+	}
 }
 
 func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
