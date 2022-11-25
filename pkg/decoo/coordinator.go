@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"sync"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
@@ -34,10 +35,11 @@ var (
 type INXClient interface {
 	ProtocolParameters() *iotago.ProtocolParameters
 	LatestMilestone() (*iotago.Milestone, error)
+	LatestMilestoneIndex() uint32
 
 	BlockMetadata(context.Context, iotago.BlockID) (*inx.BlockMetadata, error)
 	SubmitBlock(context.Context, *iotago.Block) (iotago.BlockID, error)
-	ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
+	ComputeWhiteFlag(ctx context.Context, index uint32, ts uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error)
 }
 
 // TangleListener contains the functions used to listen to Tangle changes.
@@ -85,6 +87,7 @@ type Coordinator struct {
 
 	abciClient ABCIClient
 	started    atomic.Bool
+	stopOnce   sync.Once
 }
 
 // New creates a new Coordinator.
@@ -166,11 +169,20 @@ func (c *Coordinator) Start(client ABCIClient) error {
 
 // Stop stops the coordinator.
 func (c *Coordinator) Stop() error {
-	c.started.Store(false)
-	c.cancel()
-	c.broadcastQueue.Stop()
+	c.stopOnce.Do(func() {
+		c.started.Store(false)
+		c.cancel()
+		c.broadcastQueue.Stop()
+	})
 
 	return nil
+}
+
+// Wait waits until the coordinator is stopped.
+func (c *Coordinator) Wait() {
+	<-c.ctx.Done()
+	// call Stop() to assure that Wait() does not return before the termination Stop()
+	_ = c.Stop()
 }
 
 // PublicKey returns the milestone public key of the instance.
@@ -217,7 +229,7 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 }
 
 func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneID, milestoneBlockID iotago.BlockID) error {
-	latest, err := c.inxClient.LatestMilestone()
+	latest, err := c.inxLatestMilestone()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve latest milestone: %w", err)
 	}

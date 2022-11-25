@@ -11,6 +11,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/service"
 	tmnode "github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/timeutil"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
@@ -148,8 +150,9 @@ func provide(c *dig.Container) error {
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		Coordinator *decoo.Coordinator
-		NodeBridge  *nodebridge.NodeBridge
+		Coordinator    *decoo.Coordinator
+		NodeBridge     *nodebridge.NodeBridge
+		TangleListener *nodebridge.TangleListener
 	}
 	if err := c.Provide(func(deps tendermintDeps) (*tmnode.Node, error) {
 		CoreComponent.LogInfo("Providing Tendermint ...")
@@ -169,8 +172,10 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
-		// initialize the coordinator compatible with the configured Tendermint state
-		if err := initCoordinator(deps.Coordinator, deps.NodeBridge, conf); err != nil {
+
+		// initialize the coordinator matching the configured Tendermint state
+		ctx := CoreComponent.Daemon().ContextStopped()
+		if err := initCoordinator(ctx, deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
 			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
 		}
 
@@ -200,6 +205,20 @@ func provide(c *dig.Container) error {
 			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
 
+		// make sure that Tendermint is stopped gracefully when the coordinator terminates unexpectedly
+		go func() {
+			deps.Coordinator.Wait()
+			// if the daemon is stopped, the coordinator stop was expectedly
+			if CoreComponent.Daemon().IsStopped() {
+				return
+			}
+			// otherwise stop the Tendermint node and panic
+			if err := node.Stop(); err != nil && !errors.Is(err, service.ErrAlreadyStopped) {
+				CoreComponent.LogWarnf("failed to stop Tendermint: %s", err)
+			}
+			CoreComponent.LogPanic("Coordinator unexpectedly stopped")
+		}()
+
 		return node, nil
 	}); err != nil {
 		return err
@@ -215,8 +234,13 @@ func provide(c *dig.Container) error {
 	return nil
 }
 
-func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, conf *config.Config) error {
+func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBridge *nodebridge.NodeBridge, listener *nodebridge.TangleListener, conf *config.Config) error {
 	if bootstrap {
+		// assure that the startMilestoneBlockID is solid before bootstrapping the coordinator
+		if err := waitUntilBlockSolid(ctx, listener, startMilestoneBlockID); err != nil {
+			return err
+		}
+
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
 			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
 				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
@@ -225,6 +249,21 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		}
 
 		return nil
+	}
+
+	// creating a new Tendermint node, starts the replay of blocks
+	// in order to correctly validate those Tendermint blocks, we need to be synced
+	for {
+		nodeStatus := nodeBridge.NodeStatus()
+		lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
+		cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
+		if lmi > 0 && lmi == cmi {
+			break
+		}
+		CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
+		if !timeutil.Sleep(ctx, SyncRetryInterval) {
+			return ctx.Err()
+		}
 	}
 
 	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
@@ -250,7 +289,7 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 		}
 
 		// try the previous milestone
-		ms, err = getMilestone(nodeBridge, state.MilestoneIndex-1)
+		ms, err = getMilestone(ctx, nodeBridge, state.MilestoneIndex-1)
 		if err != nil {
 			return fmt.Errorf("milestone %d cannot be retrieved: %w", state.MilestoneIndex-1, err)
 		}
@@ -263,8 +302,23 @@ func initCoordinator(coordinator *decoo.Coordinator, nodeBridge *nodebridge.Node
 	return nil
 }
 
-func getMilestone(nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), INXTimeout)
+func waitUntilBlockSolid(ctx context.Context, listener *nodebridge.TangleListener, blockID iotago.BlockID) error {
+	CoreComponent.LogInfof("waiting for block %s to become solid", blockID)
+
+	// currently, the outcome of RegisterBlockSolidEvent is undefined when the context is canceled while inside
+	// it is therefore better to use the outer context instead of adding INXTimeout
+	// TODO: use context.WithTimeout(ctx, INXTimeout) when RegisterBlockSolidEvent is fixed and returns an error
+	solidEvent := listener.RegisterBlockSolidEvent(ctx, blockID)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-solidEvent:
+		return nil
+	}
+}
+
+func getMilestone(ctx context.Context, nodeBridge *nodebridge.NodeBridge, index uint32) (*nodebridge.Milestone, error) {
+	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
 	defer cancel()
 
 	ms, err := nodeBridge.Milestone(ctx, index)
