@@ -305,7 +305,7 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 func waitUntilBlockSolid(ctx context.Context, listener *nodebridge.TangleListener, blockID iotago.BlockID) error {
 	CoreComponent.LogInfof("waiting for block %s to become solid", blockID)
 
-	// currently, the outcome of RegisterBlockSolidEvent is undefined when the context is cancelled while inside
+	// currently, the outcome of RegisterBlockSolidEvent is undefined when the context is canceled while inside
 	// it is therefore better to use the outer context instead of adding INXTimeout
 	// TODO: use context.WithTimeout(ctx, INXTimeout) when RegisterBlockSolidEvent is fixed and returns an error
 	solidEvent := listener.RegisterBlockSolidEvent(ctx, blockID)
