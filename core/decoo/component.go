@@ -251,6 +251,15 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 		return nil
 	}
 
+	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
+	// in the worst case, the height can be off by one, as the state files gets written before the DB
+	// as it is hard to detect this particular case, we always subtract one to be on the safe side
+	tendermintHeight := pv.LastSignState.Height - 1
+	// this should not happen during resuming, as Tendermint needs to sign at least two blocks to produce a milestone
+	if tendermintHeight < 0 {
+		return errors.New("resume failed: no Tendermint state available")
+	}
+
 	// creating a new Tendermint node, starts the replay of blocks
 	// in order to correctly validate those Tendermint blocks, we need to be synced
 	for {
@@ -265,9 +274,6 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 			return ctx.Err()
 		}
 	}
-
-	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
-	tendermintHeight := pv.LastSignState.Height
 
 	// start from the latest confirmed milestone as the node should contain its previous milestones
 	ms, err := nodeBridge.ConfirmedMilestone()
