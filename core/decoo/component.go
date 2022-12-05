@@ -251,6 +251,11 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 		return nil
 	}
 
+	// for the coordinator the Tendermint app state corresponds to the Tangle
+	// when the plugin was stopped but the corresponding node was running, this can lead to a situation where the latest
+	// milestone is newer than the core Tendermint state of the plugin
+	// as this is illegal in the Tendermint API, we retrieve the block height from the Tendermint core and try to find
+	// the corresponding milestone to use for the coordinator app state
 	pv := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
 	// in the worst case, the height can be off by one, as the state files gets written before the DB
 	// as it is hard to detect this particular case, we always subtract one to be on the safe side
