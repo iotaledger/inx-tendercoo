@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
@@ -67,6 +68,9 @@ type Coordinator struct {
 	// such that all blocks past this offset are pruned.
 	// A value of 0 indicates that no blocks should be pruned.
 	maxRetainBlocks uint
+	// whiteFlagTimeout defines the timeout for the ComputeWhiteFlag INX call. Since ComputeWhiteFlag requires all
+	// parents to be solid, waiting for them to be solid can take longer than other INX calls which use the INXTimeout.
+	whiteFlagTimeout time.Duration
 
 	inxClient INXClient
 	listener  TangleListener
@@ -91,7 +95,7 @@ type Coordinator struct {
 }
 
 // New creates a new Coordinator.
-func New(committee *Committee, maxRetainBlocks uint, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
+func New(committee *Committee, maxRetainBlocks uint, whiteFlagTimeout time.Duration, inxClient INXClient, listener TangleListener, log *logger.Logger) (*Coordinator, error) {
 	// there must be space for at least one honest parent in each milestone
 	if committee.F()+1 > iotago.BlockMaxParents-1 {
 		return nil, ErrTooManyValidators
@@ -105,6 +109,7 @@ func New(committee *Committee, maxRetainBlocks uint, inxClient INXClient, listen
 	c := &Coordinator{
 		committee:                    committee,
 		maxRetainBlocks:              maxRetainBlocks,
+		whiteFlagTimeout:             whiteFlagTimeout,
 		inxClient:                    inxClient,
 		listener:                     listener,
 		log:                          log,

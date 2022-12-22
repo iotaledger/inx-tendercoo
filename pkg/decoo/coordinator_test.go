@@ -39,7 +39,7 @@ func TestSingleValidator(t *testing.T) {
 	committee := NewCommittee(privateKeys[0], publicKeys...)
 
 	t.Run("bootstrap", func(t *testing.T) {
-		c, err := New(committee, 0, inx, inx, logger.NewExampleLogger(""))
+		c, err := New(committee, 0, 0, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
 		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
@@ -55,7 +55,7 @@ func TestSingleValidator(t *testing.T) {
 	})
 
 	t.Run("resume", func(t *testing.T) {
-		c, err := New(committee, 0, inx, inx, logger.NewExampleLogger(""))
+		c, err := New(committee, 0, 0, inx, inx, logger.NewExampleLogger(""))
 		require.NoError(t, err)
 
 		// init from state and replay missing transactions
@@ -85,7 +85,7 @@ func TestManyValidator(t *testing.T) {
 	privateKeys, publicKeys := generateTestKeys(N)
 	for i := 0; i < N; i++ {
 		committee := NewCommittee(privateKeys[i], publicKeys...)
-		c, err := New(committee, 0, inx, inx, logger.NewExampleLogger(fmt.Sprintf("coo-%d", i)))
+		c, err := New(committee, 0, 0, inx, inx, logger.NewExampleLogger(fmt.Sprintf("coo-%d", i)))
 		require.NoError(t, err)
 
 		require.NoError(t, c.Bootstrap(false, 1, [32]byte{}, [32]byte{}))
