@@ -27,6 +27,7 @@
   "coordinator": {
     "interval": "5s",
     "maxTrackedBlocks": 10000,
+    "whiteFlagParentsSolidTimeout": "2s",
     "tipsel": {
       "maxTips": 7,
       "reducedConfirmationLimit": 0.6,

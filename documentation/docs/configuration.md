@@ -123,6 +123,7 @@ Example:
 | ------------------------------------- | --------------------------------------------------------------- | ------ | ------------- |
 | interval                              | Target interval in which milestones are issued                  | string | "5s"          |
 | maxTrackedBlocks                      | Maximum number of blocks tracked by the milestone tip selection | int    | 10000         |
+| whiteFlagParentsSolidTimeout          | Timeout for the ComputeWhiteFlag INX call                       | string | "2s"          |
 | [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object |               |
 | [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object |               |
 
@@ -174,6 +175,7 @@ Example:
     "coordinator": {
       "interval": "5s",
       "maxTrackedBlocks": 10000,
+      "whiteFlagParentsSolidTimeout": "2s",
       "tipsel": {
         "maxTips": 7,
         "reducedConfirmationLimit": 0.6,
