@@ -66,7 +66,7 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestam
 			return c.queryWhiteFlag(ctx, index, parents)
 		}
 
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to query ComputeWhiteFlag: %w", err)
 	}
 
 	return res.GetMilestoneInclusionMerkleRoot(), res.GetMilestoneAppliedMerkleRoot(), nil

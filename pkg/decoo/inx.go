@@ -34,7 +34,7 @@ func (c *Coordinator) inxSubmitBlock(block *iotago.Block) (iotago.BlockID, error
 }
 
 func (c *Coordinator) inxComputeWhiteFlag(index uint32, ts uint32, parents iotago.BlockIDs, lastID iotago.MilestoneID) ([]byte, []byte, error) {
-	ctx, cancel := context.WithTimeout(c.ctx, INXTimeout)
+	ctx, cancel := context.WithTimeout(c.ctx, c.whiteFlagTimeout)
 	defer cancel()
 
 	return c.inxClient.ComputeWhiteFlag(ctx, index, ts, parents, lastID)
