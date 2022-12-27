@@ -224,7 +224,7 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 	}
 
 	// perform a sanity check that the proposed parent is indeed valid
-	meta, err := c.inxBlockMetadata(blockID)
+	meta, err := c.inxClient.BlockMetadata(ctx, blockID)
 	if err != nil {
 		return fmt.Errorf("failed to query BlockMetadata: %w", err)
 	}
