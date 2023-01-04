@@ -30,6 +30,8 @@ var (
 	ErrTooManyValidators = errors.New("too many validators")
 	// ErrNotStarted is returned when the coordinator has not been started.
 	ErrNotStarted = errors.New("coordinator not started")
+	// ErrInvalidParent is returned when a block cannot be the parent of a milestone.
+	ErrInvalidParent = errors.New("invalid milestone parent")
 )
 
 // INXClient contains the functions used from the INX API.
@@ -218,7 +220,16 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 
 	// wait until the state matches the proposal index
 	if err := events.WaitForChannelClosed(ctx, c.registerStateMilestoneIndexEvent(index)); err != nil {
-		return err
+		return fmt.Errorf("failed to wait for milestone index %d: %w", index, err)
+	}
+
+	// perform a sanity check that the proposed parent is indeed valid
+	meta, err := c.inxClient.BlockMetadata(ctx, blockID)
+	if err != nil {
+		return fmt.Errorf("failed to query BlockMetadata: %w", err)
+	}
+	if !validParent(meta) {
+		return ErrInvalidParent
 	}
 
 	c.log.Debugw("broadcast tx", "parent", parent)
@@ -227,7 +238,7 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 		return err
 	}
 	if res.Code != CodeTypeOK {
-		return fmt.Errorf("invalid proposal: %s", res.Log)
+		return fmt.Errorf("failed to broadcast tx: %s", res.Log)
 	}
 
 	return nil

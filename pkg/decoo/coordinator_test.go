@@ -164,8 +164,13 @@ func (m *INXMock) ValidTip(id iotago.BlockID) (bool, error) {
 	return solid, nil
 }
 
-func (m *INXMock) BlockMetadata(context.Context, iotago.BlockID) (*inxutils.BlockMetadata, error) {
-	panic("not implemented")
+func (m *INXMock) BlockMetadata(ctx context.Context, id iotago.BlockID) (*inxutils.BlockMetadata, error) {
+	require.NotNil(m.t, ctx)
+
+	_, solid := m.solidBlocks[id]
+	meta := &inxutils.BlockMetadata{BlockId: inxutils.NewBlockId(id), Solid: solid}
+
+	return meta, nil
 }
 
 func (m *INXMock) SubmitBlock(ctx context.Context, block *iotago.Block) (iotago.BlockID, error) {

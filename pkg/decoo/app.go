@@ -291,9 +291,9 @@ func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index
 
 func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
-	// only create proofs for solid tips that are not below max depth
-	if !meta.Solid || meta.ReferencedByMilestoneIndex > 0 || meta.ShouldReattach {
-		c.log.Debugw("invalid tip", "parent", blockID)
+	// only create proofs for valid parents
+	if !validParent(meta) {
+		c.log.Debugw("invalid parent", "BlockID", blockID, "Metadata", meta)
 
 		return
 	}
@@ -389,6 +389,12 @@ func (c *Coordinator) submitMilestoneBlock(ms *iotago.Milestone) error {
 	c.log.Debugw("milestone submitted", "blockID", latestMilestoneBlockID, "payload", block.Payload)
 
 	return nil
+}
+
+// validParent checks whether the given block can become a valid milestone parent.
+// A valid parent must be solid and cannot be below max depth.
+func validParent(meta *inx.BlockMetadata) bool {
+	return meta.Solid && meta.ReferencedByMilestoneIndex == 0 && !meta.ShouldReattach
 }
 
 func buildMilestoneBlock(ms *iotago.Milestone) (*iotago.Block, error) {
