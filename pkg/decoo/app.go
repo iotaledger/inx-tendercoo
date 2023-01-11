@@ -148,7 +148,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 	// register callbacks for all received parents
 	if c.deliverState.Milestone == nil {
 		processed := map[iotago.BlockID]struct{}{} // avoid processing duplicate parents more than once
-		for _, blockID := range c.deliverState.ParentByIssuer {
+		for peerID, blockID := range c.deliverState.ParentByIssuer {
 			if _, has := processed[blockID]; has {
 				continue
 			}
@@ -163,7 +163,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 			// register a callback when that block becomes solid
 			c.log.Debugw("awaiting parent", "blockID", blockID)
-			c.registerProcessParentOnSolid(blockID, c.deliverState.MilestoneIndex)
+			c.registerProcessParentOnSolid(blockID, c.deliverState.MilestoneIndex, peerID)
 		}
 	}
 
@@ -277,11 +277,11 @@ func (c *Coordinator) broadcastPartial() {
 	}
 
 	c.log.Debugw("broadcast tx", "partial", partial)
-	c.broadcastQueue.Submit(tx)
+	c.broadcastQueue.Submit("partial", tx)
 }
 
-func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32) {
-	err := c.inxRegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, m) })
+func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index uint32, peerID PeerID) {
+	err := c.inxRegisterBlockSolidCallback(blockID, func(m *inx.BlockMetadata) { c.processParent(index, peerID, m) })
 	// we can safely ignore ErrAlreadyRegistered, as each parent needs to be processed only once
 	// since ClearBlockSolidCallbacks is called every time the milestone index changes, index will always be the same
 	if err != nil && !errors.Is(err, nodebridge.ErrAlreadyRegistered) {
@@ -289,7 +289,7 @@ func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index
 	}
 }
 
-func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
+func (c *Coordinator) processParent(index uint32, peerID PeerID, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
 	// only create proofs for valid parents
 	if !validParent(meta) {
@@ -306,7 +306,8 @@ func (c *Coordinator) processParent(index uint32, meta *inx.BlockMetadata) {
 	}
 
 	c.log.Debugw("broadcast tx", "proof", proof)
-	c.broadcastQueue.Submit(tx)
+	// use the peer ID as the queue key, so that at most one proof for each peer is buffered and retried
+	c.broadcastQueue.Submit(peerID, tx)
 }
 
 func (c *Coordinator) createMilestoneEssence(parents iotago.BlockIDs) {

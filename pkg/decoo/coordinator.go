@@ -83,7 +83,7 @@ type Coordinator struct {
 	cancel                       context.CancelFunc
 	protoParamsFunc              ProtocolParametersFunc
 	stateMilestoneIndexSyncEvent *events.SyncEvent
-	broadcastQueue               *queue.Queue
+	broadcastQueue               *queue.KeyedQueue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
 	checkState   AppState
@@ -120,11 +120,9 @@ func New(committee *Committee, maxRetainBlocks uint, whiteFlagTimeout time.Durat
 		protoParamsFunc:              inxClient.ProtocolParameters,
 		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
 	}
-	// no need to store more Tendermint txs than what is sent in one epoch, i.e. 1 parent, n proofs, 1 signature
-	maxTransactions := 1 + committee.N() + 1
 
 	//nolint:forcetypeassert // we only submit []byte into the queue
-	c.broadcastQueue = queue.New(maxTransactions, func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
+	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
 
 	return c, nil
 }

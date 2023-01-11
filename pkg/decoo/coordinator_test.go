@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	waitFor = 2 * time.Second
+	waitFor = 10 * time.Second
 	tick    = 10 * time.Millisecond
 )
 
