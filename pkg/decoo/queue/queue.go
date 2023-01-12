@@ -64,6 +64,7 @@ func (q *KeyedQueue) Submit(key any, value any) {
 	defer q.mu.Unlock()
 
 	if p, has := q.byKey[key]; has {
+		// this updates the value in q.ring as well.
 		p.Value = &entry{key, value}
 
 		return
@@ -125,6 +126,7 @@ func (q *KeyedQueue) process() {
 	}
 }
 
+// ATTENTION: the lock must be acquired outside.
 func (q *KeyedQueue) ringPop() {
 	n := q.ring.Next()
 	if n == q.ring {
@@ -136,6 +138,7 @@ func (q *KeyedQueue) ringPop() {
 	q.ring = n
 }
 
+// ATTENTION: the lock must be acquired outside.
 func (q *KeyedQueue) ringPush(e *entry) *ring.Ring {
 	p := ring.New(1)
 	p.Value = e
