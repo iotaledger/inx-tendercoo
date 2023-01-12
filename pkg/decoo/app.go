@@ -277,6 +277,8 @@ func (c *Coordinator) broadcastPartial() {
 	}
 
 	c.log.Debugw("broadcast tx", "partial", partial)
+	// use a unique key for the partial signature transaction to be broadcast
+	// even a permanently failing transaction will eventually get replaced by the partial signature of next milestone
 	c.broadcastQueue.Submit("partial", tx)
 }
 
@@ -306,7 +308,9 @@ func (c *Coordinator) processParent(index uint32, peerID PeerID, meta *inx.Block
 	}
 
 	c.log.Debugw("broadcast tx", "proof", proof)
-	// use the peer ID as the queue key, so that at most one proof for each peer is buffered and retried
+	// use the peer ID as the key for the proof to broadcast
+	// as there is at most one proof per peer per milestone this prevents queue overflows
+	// even permanently failing transactions will eventually get replaced by the proofs for the next milestone
 	c.broadcastQueue.Submit(peerID, tx)
 }
 

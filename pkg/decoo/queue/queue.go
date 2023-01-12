@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"container/ring"
+	"container/list"
 	"math"
 	"sync"
 	"time"
@@ -10,20 +10,25 @@ import (
 // RetryInterval defines the time between two tries.
 const RetryInterval = 100 * time.Millisecond
 
-// The KeyedQueue holds at most one value per key and retries the execution of each such key-pair until it succeeds.
+// The KeyedQueue holds at most one value per key and executes each such value one after another.
+// The values will get executed in the order they have been added (FIFO). If the execution of one value fails,
+// it will be pushed to the back and retried. Each value will be retried indefinitely until it succeeds or
+// is replaced by a new value of the same key.
 type KeyedQueue struct {
-	f func(any) error
+	queue *list.List            // the actual queue of entries
+	byKey map[any]*list.Element // referencing each queue element by its key
+	len   int                   // current queue length, this includes entries that are currently processed
+	timer *time.Timer           // timer to schedule retries
+	mu    sync.Mutex            // mutex protecting all the above fields
 
-	byKey map[any]*ring.Ring
-	ring  *ring.Ring
-	timer *time.Timer
-	mu    sync.Mutex
+	f func(any) error // callback function when processing a value
 
 	wg       sync.WaitGroup
 	shutdown chan struct{}
 }
 
-type entry struct {
+// pair represents a key-value pair.
+type pair struct {
 	key   any
 	value any
 }
@@ -31,13 +36,17 @@ type entry struct {
 // New creates a new KeyedQueue with the execution function f.
 func New(f func(any) error) *KeyedQueue {
 	q := &KeyedQueue{
+		queue:    list.New(),
+		byKey:    map[any]*list.Element{},
+		len:      0,
 		f:        f,
-		byKey:    map[any]*ring.Ring{},
-		ring:     nil,
 		timer:    time.NewTimer(math.MaxInt64),
 		shutdown: make(chan struct{}),
 	}
-	q.timer.Stop() // make sure that the timer is not running
+
+	// make sure that the timer is not running, since the queue is empty
+	q.timer.Stop()
+	// start the main loop
 	q.wg.Add(1)
 	go q.loop()
 
@@ -45,38 +54,45 @@ func New(f func(any) error) *KeyedQueue {
 }
 
 // Stop stops the queue.
+// The function blocks until the current value has finished execution.
 func (q *KeyedQueue) Stop() {
 	close(q.shutdown)
 	q.wg.Wait()
 }
 
 // Len returns the number of values in the queue.
+// This includes elements that are currently being executed, even if they concurrently have been replaced.
 func (q *KeyedQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	return len(q.byKey)
+	return q.len
 }
 
 // Submit adds a new keyed value to the queue.
+// This overrides any previous not yet executed value with the same key.
 func (q *KeyedQueue) Submit(key any, value any) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if p, has := q.byKey[key]; has {
-		// this updates the value in q.ring as well.
-		p.Value = &entry{key, value}
-
-		return
-	}
-	if q.ring == nil {
+	// if this is the first element, make sure that the timer triggers right away
+	if q.len == 0 {
 		q.timer.Reset(0)
 	}
-	q.byKey[key] = q.ringPush(&entry{key, value})
+
+	// if the same key already exists, remove the corresponding element from the queue
+	if p, has := q.byKey[key]; has {
+		q.queue.Remove(p)
+		q.len--
+	}
+	// add the element to the key and assign it to the corresponding key
+	q.byKey[key] = q.queue.PushBack(&pair{key, value})
+	q.len++
 }
 
 func (q *KeyedQueue) loop() {
 	defer q.wg.Done()
+
 	for {
 		select {
 		case <-q.timer.C:
@@ -87,66 +103,47 @@ func (q *KeyedQueue) loop() {
 	}
 }
 
-func (q *KeyedQueue) current() *entry {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	//nolint:forcetypeassert // we only submit *entry into the ring
-	return q.ring.Value.(*entry)
-}
-
+// process executes the current first element in the queue.
 func (q *KeyedQueue) process() {
-	e := q.current()
+	p := q.popFront()
 
-	//nolint:ifshort // false positive
-	err := q.f(e.value)
+	// make sure that the callback is executed without an acquired lock
+	// this allows new vales to be submitted even during execution
+	err := q.f(p.value) //nolint:ifshort // we must lock before the if-clause
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// if there was an error, proceed with the next value after a short grace period
+	// decrease the length after the execution is done
+	q.len--
+
+	// if the execution function failed, add the element back to queue and restart the timer
 	if err != nil {
-		q.ring = q.ring.Next()
+		// only add it back to the queue if no new value with the same key was added
+		if _, has := q.byKey[p.key]; !has {
+			q.byKey[p.key] = q.queue.PushBack(p)
+			q.len++
+		}
+		// at this point there will always be at least one element in the queue
 		q.timer.Reset(RetryInterval)
 
 		return
 	}
-	// if the value has been replaced, proceed with the next value right away
-	if q.byKey[e.key].Value != any(e) {
-		q.ring = q.ring.Next()
-		q.timer.Reset(0)
 
-		return
-	}
-	// otherwise, remove the current element from the ring and the map
-	q.ringPop()
-	delete(q.byKey, e.key)
-	if q.ring != nil {
+	// if the execution was successful restart the timer for the next element, if present
+	if q.len > 0 {
 		q.timer.Reset(0)
 	}
 }
 
-// ATTENTION: the lock must be acquired outside.
-func (q *KeyedQueue) ringPop() {
-	n := q.ring.Next()
-	if n == q.ring {
-		q.ring = nil
+// popFront extracts the next element from the queue.
+func (q *KeyedQueue) popFront() *pair {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-		return
-	}
-	q.ring.Prev().Link(n)
-	q.ring = n
-}
+	front := q.queue.Remove(q.queue.Front())
+	p := front.(*pair) //nolint:forcetypeassert // we only add *pair to the queue
+	delete(q.byKey, p.key)
 
-// ATTENTION: the lock must be acquired outside.
-func (q *KeyedQueue) ringPush(e *entry) *ring.Ring {
-	p := ring.New(1)
-	p.Value = e
-	if q.ring == nil {
-		q.ring = p
-
-		return p
-	}
-
-	return p.Link(q.ring)
+	return p
 }

@@ -20,10 +20,10 @@ const (
 	tick    = 10 * time.Millisecond
 )
 
-func TestSimple(t *testing.T) {
-	var r atomic.Uint32
+func TestSingleSubmit(t *testing.T) {
+	var a atomic.Uint32
 	q := queue.New(func(i any) error {
-		r.Store(i.(uint32))
+		a.Store(i.(uint32))
 
 		return nil
 	})
@@ -31,14 +31,15 @@ func TestSimple(t *testing.T) {
 
 	const testValue uint32 = 42
 	q.Submit(0, testValue)
-	require.Eventually(t, func() bool { return r.Load() == testValue }, waitFor, tick)
-	require.Zero(t, q.Len())
+	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
+	require.EqualValues(t, testValue, a.Load())
 }
 
 func TestRetry(t *testing.T) {
-	var counter atomic.Uint32
-	q := queue.New(func(i any) error {
-		if counter.Add(1) < 4 {
+	counter := 0
+	q := queue.New(func(any) error {
+		counter++
+		if counter < 3 {
 			return errTest
 		}
 
@@ -48,31 +49,32 @@ func TestRetry(t *testing.T) {
 
 	q.Submit(0, struct{}{})
 	require.EqualValues(t, 1, q.Len())
+	time.Sleep(queue.RetryInterval)
+	require.EqualValues(t, 1, q.Len())
 	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
 }
 
 func TestReplace(t *testing.T) {
-	var r atomic.Uint32
-	q := queue.New(func(i any) error {
-		v := i.(uint32)
-		r.Store(v)
-		if v < 2 {
+	counter := 0
+	q := queue.New(func(v any) error {
+		i, ok := v.(int)
+		if !ok {
 			return errTest
 		}
+		counter += i
 
 		return nil
 	})
 	defer q.Stop()
 
-	q.Submit(0, uint32(1))
-	time.Sleep(2 * queue.RetryInterval)
-	require.EqualValues(t, 1, r.Load())
+	q.Submit(0, struct{}{})
+	time.Sleep(queue.RetryInterval)
 	require.EqualValues(t, 1, q.Len())
 
-	const testValue uint32 = 42
+	const testValue = 42
 	q.Submit(0, testValue)
-	require.Eventually(t, func() bool { return r.Load() == testValue }, waitFor, tick)
-	require.Zero(t, q.Len())
+	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
+	require.EqualValues(t, testValue, counter)
 }
 
 func TestOrder(t *testing.T) {
@@ -102,46 +104,66 @@ func TestOrder(t *testing.T) {
 }
 
 func TestSubmitWhileExecuting(t *testing.T) {
-	started := make(chan struct{})
-	wait := make(chan struct{})
+	executed := make(chan struct{})
+	barrier := make(chan struct{})
+	counter := 0
 	q := queue.New(func(v any) error {
-		if v.(bool) {
-			close(started)
+		// close the channel on the first execution
+		select {
+		case <-executed:
+		default:
+			close(executed)
 		}
-		<-wait
+
+		<-barrier
+		counter += v.(int)
 
 		return nil
 	})
 	defer q.Stop()
 
-	q.Submit(0, true)
-	<-started
-	q.Submit(1, false)
+	q.Submit(0, 1)
+	// wait until the first execution has started
+	<-executed
+	q.Submit(1, 1)
 	require.EqualValues(t, 2, q.Len())
-	close(wait)
+	// allow all executions to finish
+	close(barrier)
 	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
+	require.EqualValues(t, 2, counter)
 }
 
 func TestReplaceWhileExecuting(t *testing.T) {
-	started := make(chan struct{})
-	wait := make(chan struct{})
+	executed := make(chan struct{})
+	barrier := make(chan struct{})
 	counter := 0
 	q := queue.New(func(v any) error {
-		if v.(bool) {
-			close(started)
+		// close the channel on the first execution
+		select {
+		case <-executed:
+		default:
+			close(executed)
 		}
-		<-wait
-		counter++
+
+		<-barrier
+		i, ok := v.(int)
+		if !ok {
+			return errTest
+		}
+		counter += i
 
 		return nil
 	})
 	defer q.Stop()
 
-	q.Submit(0, true)
-	<-started
-	q.Submit(0, false)
-	require.EqualValues(t, 1, q.Len())
-	close(wait)
+	q.Submit(0, struct{}{})
+	// wait until the first execution has started
+	<-executed
+	q.Submit(0, 1)
+	q.Submit(1, 1)
+	require.EqualValues(t, 3, q.Len())
+	// allow all executions to finish
+	close(barrier)
 	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
 	require.EqualValues(t, 2, counter)
 }
@@ -163,6 +185,4 @@ func TestConcurrentSubmit(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-
-	require.EqualValues(t, capacity, q.Len())
 }
