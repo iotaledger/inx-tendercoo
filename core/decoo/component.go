@@ -18,6 +18,7 @@ import (
 	"github.com/tendermint/tendermint/proxy"
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
 	tmtypes "github.com/tendermint/tendermint/types"
+	"go.uber.org/atomic"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
 
@@ -90,6 +91,8 @@ var (
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
+
+	trackBlocks atomic.Bool // whether solid blocks should be tracked by the tip selection
 
 	// closures.
 	onBlockSolid                *events.Closure
@@ -347,11 +350,16 @@ func getMilestone(ctx context.Context, nodeBridge *nodebridge.NodeBridge, index 
 }
 
 func configure() error {
+	trackBlocks.Store(true)
 	confirmedMilestoneSignal = make(chan milestoneInfo, 1)
 	triggerNextMilestone = make(chan struct{}, 1)
 
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
+		// ignore all new blocks until this switch is set again
+		if !trackBlocks.Load() {
+			return
+		}
 		// ignore blocks that are not valid parents
 		if !decoo.ValidParent(metadata) {
 			return
@@ -359,6 +367,9 @@ func configure() error {
 		// add tips to the heaviest branch selector
 		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
+			// stop tracking new blocks to prevent overflows
+			trackBlocks.Store(false)
+
 			CoreComponent.LogInfo("trigger next milestone preemptively")
 			select {
 			case triggerNextMilestone <- struct{}{}:
@@ -370,6 +381,10 @@ func configure() error {
 
 	// pass all new confirmed milestones to the coordinator loop
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
+		trackBlocks.Store(true)
+		// reset the tip selection after each new milestone, to only include unconfirmed transactions
+		deps.Selector.Reset()
+
 		// ignore new confirmed milestones during syncing
 		if lmi := deps.NodeBridge.LatestMilestoneIndex(); lmi > milestone.Milestone.Index {
 			CoreComponent.LogDebugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)

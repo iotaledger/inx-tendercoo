@@ -172,9 +172,6 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 		return nil, ErrNoTipsAvailable
 	}
 
-	// reset the whole HeaviestSelector if valid tips were found
-	s.Reset()
-
 	return tips, nil
 }
 
