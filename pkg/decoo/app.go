@@ -294,7 +294,7 @@ func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index
 func (c *Coordinator) processParent(index uint32, peerID PeerID, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
 	// only create proofs for valid parents
-	if !ValidParent(meta) {
+	if !ValidParent(meta, index, c.inxClient.ProtocolParameters().BelowMaxDepth) {
 		c.log.Debugw("invalid parent", "BlockID", blockID, "Metadata", meta)
 
 		return
@@ -401,9 +401,32 @@ func buildMilestoneBlock(ms *iotago.Milestone) (*iotago.Block, error) {
 }
 
 // ValidParent checks whether the given block can become a valid milestone parent.
-// A valid parent must be solid and cannot be below max depth.
-func ValidParent(meta *inx.BlockMetadata) bool {
-	return meta.Solid && meta.ReferencedByMilestoneIndex == 0 && !meta.ShouldReattach
+func ValidParent(meta *inx.BlockMetadata, cmi iotago.MilestoneIndex, belowMaxDepth uint8) bool {
+	if !meta.Solid {
+		// non-solid blocks are invalid.
+		return false
+	}
+
+	if meta.ReferencedByMilestoneIndex == 0 {
+		// blocks that are not referenced by a milestone yet are only valid if they are not "below max depth".
+		// "ShouldReattach" checks for "below max depth" for non referenced blocks.
+		return !meta.ShouldReattach
+	}
+
+	if cmi <= meta.ReferencedByMilestoneIndex {
+		// block is valid if it got referenced by the same or newer milestone than the current known milestone index.
+		return true
+	}
+
+	// block is valid if it got referenced by a milestone and is not below max depth yet.
+	// if the ReferencedByMilestoneIndex to CMI delta is over belowMaxDepth, then the block is "below max depth".
+	// we have to decrease belowMaxDepth by 1, otherwise the block would already be "below max depth"
+	// if we use it as a parent for the next milestone.
+	if (cmi - meta.ReferencedByMilestoneIndex) > uint32(belowMaxDepth-1) {
+		return false
+	}
+
+	return true
 }
 
 // MilestoneBlockID returns the block ID of the given milestone.

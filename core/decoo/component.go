@@ -353,7 +353,7 @@ func configure() error {
 	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
 		// ignore blocks that are not valid parents
-		if !decoo.ValidParent(metadata) {
+		if !decoo.ValidParent(metadata, deps.Coordinator.MilestoneIndex(), deps.NodeBridge.ProtocolParameters().BelowMaxDepth) {
 			return
 		}
 		// add tips to the heaviest branch selector
