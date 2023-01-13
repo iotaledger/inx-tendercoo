@@ -197,8 +197,8 @@ func (c *Coordinator) PublicKey() ed25519.PublicKey {
 
 // MilestoneIndex returns the milestone index of the current coordinator state.
 func (c *Coordinator) MilestoneIndex() uint32 {
-	c.checkState.Lock()
-	defer c.checkState.Unlock()
+	c.checkState.RLock()
+	defer c.checkState.RUnlock()
 
 	return c.checkState.MilestoneIndex
 }

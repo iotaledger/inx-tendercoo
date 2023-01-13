@@ -14,7 +14,7 @@ import (
 // The AppState must have a well-defined hash. For this, the AppState is marshaled into json and the resulting bytes
 // are then hashed using BLAKE2b. The standard json implementation assures, that the marshaling is always deterministic.
 type AppState struct {
-	sync.Mutex
+	sync.RWMutex
 
 	// blockHeader stores the header from BeginBlock. This is only part of the context and not the actual state.
 	blockHeader tmtypes.Header
