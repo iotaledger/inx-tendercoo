@@ -40,6 +40,20 @@ func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
 	}, blockID
 }
 
+func TestHeaviestSelector_Reset(t *testing.T) {
+	hps := newHPS()
+	// add a single block
+	metadata, _ := newMetadata(iotago.BlockIDs{iotago.EmptyBlockID()})
+	hps.OnNewSolidBlock(metadata)
+
+	assert.Equal(t, 1, hps.TrackedBlocks())
+	assert.Equal(t, 1, hps.NumTips())
+
+	hps.Reset()
+	assert.Zero(t, hps.TrackedBlocks())
+	assert.Zero(t, hps.NumTips())
+}
+
 func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 	hps := newHPS()
 	// create a chain
@@ -49,6 +63,8 @@ func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 		hps.OnNewSolidBlock(metadata)
 		lastBlockID = blockID
 	}
+	assert.Equal(t, numTestBlocks, hps.TrackedBlocks())
+	assert.Equal(t, 1, hps.NumTips())
 
 	tips, err := hps.SelectTips(1)
 	assert.NoError(t, err)
@@ -56,9 +72,6 @@ func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 
 	// check if the tip on top was picked
 	assert.ElementsMatch(t, lastBlockID, tips[0])
-
-	// check that trackedBlocks is reset
-	assert.Zero(t, hps.TrackedBlocks())
 }
 
 func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
@@ -73,8 +86,9 @@ func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
 		blockIDs[i] = blockID
 	}
 
-	// check if trackedBlocks match the current count
+	// check if all blocks have been tracked
 	assert.Equal(t, numBlocks, numTrackedBlocks)
+	assert.Equal(t, numBlocks, hps.TrackedBlocks())
 
 	// check if the current tips match the current count
 	assert.EqualValues(t, numBlocks, hps.NumTips())
@@ -94,10 +108,6 @@ func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
 
 	// check if the tip on top was picked
 	assert.ElementsMatch(t, blockID, tips[0])
-
-	// check that everything is reset
-	assert.Zero(t, hps.TrackedBlocks())
-	assert.Zero(t, hps.NumTips())
 }
 
 func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
@@ -115,8 +125,9 @@ func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
 		}
 	}
 
-	// check if all blocks are tracked
+	// check if all blocks have been tracked
 	assert.Equal(t, numChains*numTestBlocks, numTrackedBlocks)
+	assert.Equal(t, numChains*numTestBlocks, hps.TrackedBlocks())
 
 	tips, err := hps.SelectTips(2)
 	assert.NoError(t, err)
@@ -124,10 +135,6 @@ func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
 
 	// check if the tips on top of both branches were picked
 	assert.ElementsMatch(t, lastBlockIDs, tips)
-
-	// check that everything is reset
-	assert.Zero(t, hps.TrackedBlocks())
-	assert.Zero(t, hps.NumTips())
 }
 
 func BenchmarkHeaviestSelector_OnNewSolidBlock(b *testing.B) {

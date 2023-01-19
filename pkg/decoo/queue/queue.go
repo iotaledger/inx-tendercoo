@@ -85,7 +85,7 @@ func (q *KeyedQueue) Submit(key any, value any) {
 		q.queue.Remove(p)
 		q.len--
 	}
-	// add the element to the key and assign it to the corresponding key
+	// add the element to the queue and assign it to the corresponding key
 	q.byKey[key] = q.queue.PushBack(&pair{key, value})
 	q.len++
 }

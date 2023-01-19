@@ -113,8 +113,6 @@ func coordinatorLoop(ctx context.Context) {
 			resetRunningTimer(timer, 0)
 
 		case info = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
-			// SelectTips also resets the tips; since this did not happen in this case, we manually reset the selector
-			deps.Selector.Reset()
 			// reset the timer to fire when the next milestone is due
 			resetRunningTimer(timer, remainingInterval(info.timestamp))
 
