@@ -2,13 +2,16 @@ package decoo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/iotaledger/hive.go/core/timeutil"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
+	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
 
@@ -61,53 +64,24 @@ func coordinatorLoop(ctx context.Context) {
 	// start a timer such that it does not fire before confirmedMilestoneSignal was received
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
-
-	// initialize the cancel function to NOP until the first proposeParent has been called
-	var cancelPropose context.CancelFunc = func() {}
-	defer cancelPropose()
+	// propose the next parent; this automatically cancels obsolete proposes and retries on error
+	proposer := queue.NewSingle[milestoneInfo](Parameters.Interval/2, proposeParent)
+	defer proposer.Stop()
 
 	var info milestoneInfo
 	for {
 		select {
 		case <-timer.C: // propose a parent for the next milestone
-			lmi, cmi := getMilestoneIndex()
-			// check that the confirmed milestone of the node matches the current index
-			// if not we can skip and wait for the corresponding onConfirmedMilestoneChanged to be processed
-			if cmi != info.index {
-				CoreComponent.LogWarnf("behind the node; confirmed=%d, current coo index=%d", cmi, info.index)
-
-				continue
-			}
 			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
 			// we cannot use deps.NodeBridge.IsNodeSynced() here, as this is always false during bootstrapping
-			if lmi != cmi {
+			if lmi, cmi := getMilestoneIndex(); lmi != cmi {
 				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
 				continue
 			}
-
-			CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
-			tips, err := deps.Selector.SelectTips(1)
-			if err != nil {
-				CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
-				// use the previous milestone block as fallback
-				tips = iotago.BlockIDs{info.milestoneBlockID}
-			}
-			// make sure that at least one second has passed since the last milestone
-			if d := time.Until(info.timestamp.Add(time.Second)); d > 0 {
-				time.Sleep(d)
-			}
-
-			// cancel previous proposeParent call
-			cancelPropose()
-			// create a new cancellable context for the next proposeParent call
-			var ctxPropose context.Context
-			ctxPropose, cancelPropose = context.WithCancel(ctx)
-
-			// propose a random tip as a parent for the next milestone
-			//nolint:gosec // we don't care about weak random numbers here
-			go proposeParent(ctxPropose, cancelPropose, info.index+1, tips[rand.Intn(len(tips))])
+			// add the proposeParent call for that milestone to the queue
+			proposer.Submit(info)
 
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
 			resetRunningTimer(timer, 0)
@@ -137,6 +111,41 @@ func coordinatorLoop(ctx context.Context) {
 	}
 }
 
+func proposeParent(ctx context.Context, info milestoneInfo) error {
+	// sanity check: make sure that at least one second has passed since the last milestone
+	if d := time.Until(info.timestamp.Add(time.Second)); d > 0 && !timeutil.Sleep(ctx, d) {
+		return ctx.Err()
+	}
+
+	// if the confirmed milestone index has progressed further than the milestone index, we can cancel
+	if _, cmi := getMilestoneIndex(); cmi > info.index {
+		CoreComponent.LogInfof("no need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
+
+		return nil
+	}
+
+	CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
+	tips, err := deps.Selector.SelectTips(ctx, 1)
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
+	if err != nil {
+		CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
+		// use the previous milestone block as fallback
+		tips = iotago.BlockIDs{info.milestoneBlockID}
+	}
+
+	// propose a random tip as a parent for the next milestone
+	//nolint:gosec // we don't care about weak random numbers here
+	err = deps.Coordinator.ProposeParent(ctx, info.index+1, tips[rand.Intn(len(tips))])
+	// only log a warning when the context was not canceled
+	if err != nil && ctx.Err() != nil {
+		CoreComponent.LogWarnf("failed to propose parent for %d: %s", info.index+1, err)
+	}
+
+	return err
+}
+
 func processConfirmedMilestone(milestone *iotago.Milestone) {
 	confirmedMilestone.Lock()
 	defer confirmedMilestone.Unlock()
@@ -158,14 +167,6 @@ func getMilestoneIndex() (uint32, uint32) {
 	cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
 
 	return lmi, cmi
-}
-
-func proposeParent(ctx context.Context, cancel context.CancelFunc, index uint32, tip iotago.BlockID) {
-	defer cancel()
-
-	if err := deps.Coordinator.ProposeParent(ctx, index, tip); err != nil {
-		CoreComponent.LogWarnf("failed to propose parent: %s", err)
-	}
 }
 
 func resetRunningTimer(timer *time.Timer, d time.Duration) {
