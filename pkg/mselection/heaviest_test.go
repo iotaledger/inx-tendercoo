@@ -2,8 +2,10 @@
 package mselection_test
 
 import (
+	"context"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -16,7 +18,7 @@ import (
 const (
 	TestMaxTips                  = 10
 	TestReducedConfirmationLimit = 1
-	TestTimeout                  = 100
+	TestTimeout                  = 100 * time.Millisecond
 
 	numTestBlocks      = 32 * 100
 	numBenchmarkBlocks = 5000
@@ -66,7 +68,7 @@ func TestHeaviestSelector_SelectTipsChain(t *testing.T) {
 	assert.Equal(t, numTestBlocks, hps.TrackedBlocks())
 	assert.Equal(t, 1, hps.NumTips())
 
-	tips, err := hps.SelectTips(1)
+	tips, err := hps.SelectTips(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Len(t, tips, 1)
 
@@ -102,7 +104,7 @@ func TestHeaviestSelector_CheckTipsRemoved(t *testing.T) {
 	assert.EqualValues(t, 1, hps.NumTips())
 
 	// select a tip
-	tips, err := hps.SelectTips(1)
+	tips, err := hps.SelectTips(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Len(t, tips, 1)
 
@@ -129,7 +131,7 @@ func TestHeaviestSelector_SelectTipsChains(t *testing.T) {
 	assert.Equal(t, numChains*numTestBlocks, numTrackedBlocks)
 	assert.Equal(t, numChains*numTestBlocks, hps.TrackedBlocks())
 
-	tips, err := hps.SelectTips(2)
+	tips, err := hps.SelectTips(context.Background(), 2)
 	assert.NoError(t, err)
 	assert.Len(t, tips, 2)
 
