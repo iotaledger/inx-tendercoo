@@ -2,6 +2,7 @@
 package queue_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -16,13 +17,15 @@ import (
 var errTest = errors.New("test")
 
 const (
+	retryInterval = 100 * time.Millisecond
+
 	waitFor = time.Second
 	tick    = 10 * time.Millisecond
 )
 
-func TestSingleSubmit(t *testing.T) {
+func TestSubmit(t *testing.T) {
 	var a atomic.Uint32
-	q := queue.New(func(i any) error {
+	q := queue.New(retryInterval, func(_ context.Context, i any) error {
 		a.Store(i.(uint32))
 
 		return nil
@@ -37,7 +40,7 @@ func TestSingleSubmit(t *testing.T) {
 
 func TestRetry(t *testing.T) {
 	counter := 0
-	q := queue.New(func(any) error {
+	q := queue.New(retryInterval, func(context.Context, any) error {
 		counter++
 		if counter < 3 {
 			return errTest
@@ -49,14 +52,14 @@ func TestRetry(t *testing.T) {
 
 	q.Submit(0, struct{}{})
 	require.EqualValues(t, 1, q.Len())
-	time.Sleep(queue.RetryInterval)
+	time.Sleep(retryInterval)
 	require.EqualValues(t, 1, q.Len())
 	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
 }
 
 func TestReplace(t *testing.T) {
 	counter := 0
-	q := queue.New(func(v any) error {
+	q := queue.New(retryInterval, func(_ context.Context, v any) error {
 		i, ok := v.(int)
 		if !ok {
 			return errTest
@@ -68,7 +71,7 @@ func TestReplace(t *testing.T) {
 	defer q.Stop()
 
 	q.Submit(0, struct{}{})
-	time.Sleep(queue.RetryInterval)
+	time.Sleep(retryInterval)
 	require.EqualValues(t, 1, q.Len())
 
 	const testValue = 42
@@ -80,7 +83,7 @@ func TestReplace(t *testing.T) {
 func TestOrder(t *testing.T) {
 	blocked := make(chan struct{})
 	counter := 0
-	q := queue.New(func(i any) error {
+	q := queue.New(retryInterval, func(_ context.Context, i any) error {
 		t.Log(i)
 		<-blocked
 		if counter == 0 {
@@ -107,7 +110,7 @@ func TestSubmitWhileExecuting(t *testing.T) {
 	executed := make(chan struct{})
 	barrier := make(chan struct{})
 	counter := 0
-	q := queue.New(func(v any) error {
+	q := queue.New(retryInterval, func(_ context.Context, v any) error {
 		// close the channel on the first execution
 		select {
 		case <-executed:
@@ -137,7 +140,7 @@ func TestReplaceWhileExecuting(t *testing.T) {
 	executed := make(chan struct{})
 	barrier := make(chan struct{})
 	counter := 0
-	q := queue.New(func(v any) error {
+	q := queue.New(retryInterval, func(_ context.Context, v any) error {
 		// close the channel on the first execution
 		select {
 		case <-executed:
@@ -168,10 +171,70 @@ func TestReplaceWhileExecuting(t *testing.T) {
 	require.EqualValues(t, 2, counter)
 }
 
+func TestWaitSingle(t *testing.T) {
+	executed := make(chan struct{})
+	barrier := make(chan struct{})
+	counter := 0
+	q := queue.New(retryInterval, func(context.Context, any) error {
+		// close the channel on the first execution
+		select {
+		case <-executed:
+		default:
+			close(executed)
+		}
+		<-barrier
+		counter++
+
+		return nil
+	})
+
+	q.Submit(0, struct{}{})
+	// wait until the first execution has started
+	<-executed
+	q.Submit(0, struct{}{})
+	q.Submit(0, struct{}{})
+
+	close(barrier)
+
+	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
+	require.EqualValues(t, 2, counter)
+}
+
+func TestCancelRunning(t *testing.T) {
+	executed := make(chan struct{})
+	counter := 0
+	q := queue.New(retryInterval, func(ctx context.Context, v any) error {
+		// close the channel on the first execution
+		select {
+		case <-executed:
+		default:
+			close(executed)
+		}
+
+		// for the first value, we wait until cancellation
+		if first := v.(bool); first {
+			<-ctx.Done()
+
+			return ctx.Err()
+		}
+		counter++
+
+		return nil
+	})
+
+	q.Submit(0, true)
+	// wait until the first execution has started
+	<-executed
+	q.Submit(0, false)
+
+	require.Eventually(t, func() bool { return q.Len() == 0 }, waitFor, tick)
+	require.EqualValues(t, 1, counter)
+}
+
 func TestConcurrentSubmit(t *testing.T) {
 	const numThreads = 10
 	const capacity = 10
-	q := queue.New(func(any) error { return errTest })
+	q := queue.New(retryInterval, func(context.Context, any) error { return errTest })
 	defer q.Stop()
 
 	var wg sync.WaitGroup

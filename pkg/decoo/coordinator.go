@@ -23,6 +23,9 @@ import (
 const (
 	// ProtocolVersion defines the version of the coordinator Tendermint application.
 	ProtocolVersion uint64 = 0x1
+
+	// RetryInterval defines the time between two broadcast attempts.
+	RetryInterval = 100 * time.Millisecond
 )
 
 var (
@@ -122,7 +125,7 @@ func New(committee *Committee, maxRetainBlocks uint, whiteFlagTimeout time.Durat
 	}
 
 	//nolint:forcetypeassert // we only submit []byte into the queue
-	c.broadcastQueue = queue.New(func(i interface{}) error { return c.broadcastTx(i.([]byte)) })
+	c.broadcastQueue = queue.New(RetryInterval, func(_ context.Context, i any) error { return c.broadcastTx(i.([]byte)) })
 
 	return c, nil
 }
