@@ -9,7 +9,7 @@ import (
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
 	"github.com/iotaledger/hive.go/serializer/v2"
-	"github.com/iotaledger/inx-app/nodebridge"
+	"github.com/iotaledger/inx-app/pkg/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
