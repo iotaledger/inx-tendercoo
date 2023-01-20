@@ -125,7 +125,7 @@ func New(committee *Committee, maxRetainBlocks uint, whiteFlagTimeout time.Durat
 	}
 
 	//nolint:forcetypeassert // we only submit []byte into the queue
-	c.broadcastQueue = queue.New(RetryInterval, func(_ context.Context, i any) error { return c.broadcastTx(i.([]byte)) })
+	c.broadcastQueue = queue.New(RetryInterval, func(ctx context.Context, i any) error { return c.broadcastTx(ctx, i.([]byte)) })
 
 	return c, nil
 }
@@ -287,11 +287,11 @@ func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct
 	return ch
 }
 
-func (c *Coordinator) broadcastTx(tx []byte) error {
+func (c *Coordinator) broadcastTx(ctx context.Context, tx []byte) error {
 	if !c.started.Load() {
 		return ErrNotStarted
 	}
-	res, err := c.abciClient.BroadcastTxSync(c.ctx, tx)
+	res, err := c.abciClient.BroadcastTxSync(ctx, tx)
 	if err == nil && res.Code != CodeTypeOK {
 		c.log.Warnf("broadcast did not pass CheckTx: %s", res.Log)
 	}

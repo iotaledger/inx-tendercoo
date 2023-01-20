@@ -111,12 +111,8 @@ func coordinatorLoop(ctx context.Context) {
 	}
 }
 
+// proposeParent proposes a tip as the parent for the next milestone after info.
 func proposeParent(ctx context.Context, info milestoneInfo) error {
-	// sanity check: make sure that at least one second has passed since the last milestone
-	if d := time.Until(info.timestamp.Add(time.Second)); d > 0 && !timeutil.Sleep(ctx, d) {
-		return ctx.Err()
-	}
-
 	// if the confirmed milestone index has progressed further than the milestone index, we can cancel
 	if _, cmi := getMilestoneIndex(); cmi > info.index {
 		CoreComponent.LogInfof("no need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
@@ -124,14 +120,19 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 		return nil
 	}
 
+	// sanity check: make sure that at least one second has passed since the last milestone
+	if d := time.Until(info.timestamp.Add(time.Second)); d > 0 && !timeutil.Sleep(ctx, d) {
+		return ctx.Err()
+	}
+
 	CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
 	tips, err := deps.Selector.SelectTips(ctx, 1)
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
+	// use the previous milestone block as fallback
 	if err != nil {
-		CoreComponent.LogWarnf("defaulting to last milestone as tip: %s", err)
-		// use the previous milestone block as fallback
+		CoreComponent.LogWarnf("defaulting to last milestone: tip selection failed: %s", err)
 		tips = iotago.BlockIDs{info.milestoneBlockID}
 	}
 
@@ -140,7 +141,7 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 	err = deps.Coordinator.ProposeParent(ctx, info.index+1, tips[rand.Intn(len(tips))])
 	// only log a warning when the context was not canceled
 	if err != nil && ctx.Err() != nil {
-		CoreComponent.LogWarnf("failed to propose parent for %d: %s", info.index+1, err)
+		CoreComponent.LogWarnf("failed to propose parent for milestone %d: %s", info.index+1, err)
 	}
 
 	return err
