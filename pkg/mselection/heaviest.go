@@ -3,6 +3,7 @@ package mselection
 
 import (
 	"container/list"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
-	"go.uber.org/atomic"
 
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -83,11 +83,17 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 
 // NumTips returns the number of tips.
 func (s *HeaviestSelector) NumTips() int {
+	s.Lock()
+	defer s.Unlock()
+
 	return s.tips.Len()
 }
 
 // TrackedBlocks returns the number of tracked blocks.
 func (s *HeaviestSelector) TrackedBlocks() int {
+	s.Lock()
+	defer s.Unlock()
+
 	return len(s.trackedBlocks)
 }
 
@@ -152,7 +158,7 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 // from creating heavier branches while selection is in progress.
 // The cancellation parameters unreferencedBlocksThreshold and timeout are only considered when at least
 // minRequiredTips tips have been selected.
-func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, error) {
+func (s *HeaviestSelector) SelectTips(ctx context.Context, minRequiredTips int) (iotago.BlockIDs, error) {
 	if minRequiredTips < 1 {
 		panic("HeaviestSelector: at least one tip must be required")
 	}
@@ -163,34 +169,35 @@ func (s *HeaviestSelector) SelectTips(minRequiredTips int) (iotago.BlockIDs, err
 	// caution: the tips are not copied, do not mutate!
 	tipsList := s.tipsToList()
 
-	tips, err := s.selectGreedy(minRequiredTips, tipsList)
-	if err != nil {
-		return nil, fmt.Errorf("failed to select tips: %w", err)
-	}
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 
-	if len(tips) == 0 {
-		return nil, ErrNoTipsAvailable
+	tips, err := s.selectGreedy(ctx, minRequiredTips, tipsList)
+	if err != nil {
+		return nil, err
 	}
 
 	return tips, nil
 }
 
 // selectGreedy selects the best tips greedily from tipsList.
-func (s *HeaviestSelector) selectGreedy(minRequiredTips int, tipsList *trackedBlocksList) (iotago.BlockIDs, error) {
-	// use a timeout for the selection to keep the view on the tangle recent
-	var expired atomic.Bool
-	timer := time.AfterFunc(s.timeout, func() { expired.Store(true) })
-	defer timer.Stop()
-
+func (s *HeaviestSelector) selectGreedy(ctx context.Context, minRequiredTips int, tipsList *trackedBlocksList) (iotago.BlockIDs, error) {
 	var (
 		tips           iotago.BlockIDs
 		lastTip        *trackedBlock
 		bestReferenced uint
 	)
 	for i := 0; i < s.maxTips; i++ {
-		// stop if the timeout was reached
-		if len(tips) >= minRequiredTips && expired.Load() {
-			return tips, nil
+		// handel cancellation
+		select {
+		case <-ctx.Done():
+			// stop if the timeout was reached
+			if len(tips) >= minRequiredTips {
+				return tips, nil
+			}
+
+			return tips, ctx.Err()
+		default:
 		}
 
 		// remove the last tip from the list
