@@ -83,11 +83,17 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 
 // NumTips returns the number of tips.
 func (s *HeaviestSelector) NumTips() int {
+	s.Lock()
+	defer s.Unlock()
+
 	return s.tips.Len()
 }
 
 // TrackedBlocks returns the number of tracked blocks.
 func (s *HeaviestSelector) TrackedBlocks() int {
+	s.Lock()
+	defer s.Unlock()
+
 	return len(s.trackedBlocks)
 }
 
@@ -168,11 +174,7 @@ func (s *HeaviestSelector) SelectTips(ctx context.Context, minRequiredTips int) 
 
 	tips, err := s.selectGreedy(ctx, minRequiredTips, tipsList)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select tips: %w", err)
-	}
-
-	if len(tips) == 0 {
-		return nil, ErrNoTipsAvailable
+		return nil, err
 	}
 
 	return tips, nil

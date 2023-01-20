@@ -279,6 +279,7 @@ func (c *Coordinator) initState(height int64, state *State) {
 }
 
 func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct{} {
+	// as the trigger is called inside a checkState lock, the register and the index don't need to be in the same lock
 	ch := c.stateMilestoneIndexSyncEvent.RegisterEvent(index)
 	if index <= c.MilestoneIndex() {
 		c.stateMilestoneIndexSyncEvent.Trigger(index)

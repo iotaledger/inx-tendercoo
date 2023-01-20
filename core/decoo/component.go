@@ -18,7 +18,6 @@ import (
 	"github.com/tendermint/tendermint/proxy"
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
 	tmtypes "github.com/tendermint/tendermint/types"
-	"go.uber.org/atomic"
 	"go.uber.org/dig"
 	"go.uber.org/zap/zapcore"
 
@@ -91,8 +90,6 @@ var (
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
-
-	trackBlocks atomic.Bool // whether solid blocks should be tracked by the tip selection
 
 	// closures.
 	onBlockSolid                *events.Closure
@@ -350,26 +347,28 @@ func getMilestone(ctx context.Context, nodeBridge *nodebridge.NodeBridge, index 
 }
 
 func configure() error {
-	trackBlocks.Store(true)
 	confirmedMilestoneSignal = make(chan milestoneInfo, 1)
 	triggerNextMilestone = make(chan struct{}, 1)
 
-	// pass all new solid blocks to the selector and preemptively trigger new milestone when needed
+	// for each solid block, add it to the selector and preemptively trigger the next milestone if needed
+	// This assumes that solid block events are always triggered in the correct order, and that solid block events in
+	// the past cone of a milestone are generally triggered before its milestone confirmation event.
+	// Race conditions, i.e. solid blocks that come after their confirming milestone event, are included in the selector
+	// even though they are no longer valid parents. In the very rare case, where this happens and the SelectTips is
+	// also called before the milestone's solid block event has been processed, it could cause Coordinator.ProposeParent
+	// to propose such an invalid parent, fail and be retried.
 	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
-		// ignore all new blocks until this switch is set again
-		if !trackBlocks.Load() {
+		// do not track more blocks than the configured limit
+		if deps.Selector.TrackedBlocks() >= Parameters.MaxTrackedBlocks {
 			return
 		}
 		// ignore blocks that are not valid parents
 		if !decoo.ValidParent(metadata) {
 			return
 		}
-		// add tips to the heaviest branch selector
-		// if there are too many blocks, trigger the latest milestone again. This will trigger a new milestone.
-		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
-			// stop tracking new blocks to prevent overflows
-			trackBlocks.Store(false)
 
+		// add tips to the heaviest branch selector, if there are too many blocks, trigger a new milestone
+		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
 			CoreComponent.LogInfo("trigger next milestone preemptively")
 			select {
 			case triggerNextMilestone <- struct{}{}:
@@ -379,10 +378,9 @@ func configure() error {
 		}
 	})
 
-	// pass all new confirmed milestones to the coordinator loop
+	// for each confirmed milestone, reset the selector and signal its arrival for the coordinator loop
 	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
-		trackBlocks.Store(true)
-		// reset the tip selection after each new milestone, to only include unconfirmed transactions
+		// reset the tip selection after each new milestone to only add unconfirmed blocks to the selector
 		deps.Selector.Reset()
 
 		// ignore new confirmed milestones during syncing
