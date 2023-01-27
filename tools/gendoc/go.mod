@@ -54,7 +54,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-rc.1 // indirect
-	github.com/iotaledger/inx-app v1.0.0-rc.2 // indirect
+	github.com/iotaledger/inx-app v1.0.0-rc.2.0.20230120195000-1e7f96b98754 // indirect
 	github.com/iotaledger/inx/go v1.0.0-rc.1 // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect
 	github.com/iotaledger/iota.go/v3 v3.0.0-rc.1 // indirect
