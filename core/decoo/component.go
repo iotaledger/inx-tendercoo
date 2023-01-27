@@ -99,7 +99,7 @@ var (
 	onConfirmedMilestoneChanged *events.Closure
 )
 
-// Coordinator contains the methods used from a decentralized coordinator.
+// Coordinator contains the methods used from a coordinator.
 type Coordinator interface {
 	Start(decoo.ABCIClient) error
 	Stop() error
@@ -125,7 +125,7 @@ func provide(c *dig.Container) error {
 	log = CoreComponent.Logger()
 
 	// provide the heaviest branch selection strategy
-	if err := c.Provide(func() *selector.Heaviest {
+	if err := c.Provide(func() selector.TipSelector {
 		return selector.NewHeaviest(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
 	}); err != nil {
 		return err
@@ -149,13 +149,13 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
-	// provide the coordinator
-	type coordinatorDeps struct {
+	// provide the decentralized coordinator
+	type deCooDeps struct {
 		dig.In
 		NodeBridge     *nodebridge.NodeBridge
 		TangleListener *nodebridge.TangleListener
 	}
-	if err := c.Provide(func(deps coordinatorDeps) (*decoo.Coordinator, error) {
+	if err := c.Provide(func(deps deCooDeps) (*decoo.Coordinator, error) {
 		log.Info("Providing Coordinator ...")
 		defer log.Info("Providing Coordinator ... done")
 
@@ -191,10 +191,15 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
+	// provide the coordinator abstraction
+	if err := c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo }); err != nil {
+		return err
+	}
+
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		Coordinator    *decoo.Coordinator
+		DeCoo          *decoo.Coordinator
 		NodeBridge     *nodebridge.NodeBridge
 		TangleListener *nodebridge.TangleListener
 	}
@@ -219,7 +224,7 @@ func provide(c *dig.Container) error {
 
 		// initialize the coordinator matching the configured Tendermint state
 		ctx := CoreComponent.Daemon().ContextStopped()
-		if err := initCoordinator(ctx, deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
+		if err := initCoordinator(ctx, deps.DeCoo, deps.NodeBridge, deps.TangleListener, conf); err != nil {
 			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
 		}
 
@@ -228,7 +233,7 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			return nil, fmt.Errorf("invalid log level: %w", err)
 		}
-		logger := NewTenderLogger(CoreComponent.App().NewLogger("Tendermint"), lvl)
+		tenderLogger := NewTenderLogger(CoreComponent.App().NewLogger("Tendermint"), lvl)
 
 		pval := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
 		nodeKey, err := p2p.LoadNodeKey(conf.NodeKeyFile())
@@ -240,18 +245,18 @@ func provide(c *dig.Container) error {
 		node, err := tmnode.NewNode(conf,
 			pval,
 			nodeKey,
-			proxy.NewLocalClientCreator(deps.Coordinator),
+			proxy.NewLocalClientCreator(deps.DeCoo),
 			func() (*tmtypes.GenesisDoc, error) { return gen, nil },
 			tmnode.DefaultDBProvider,
 			tmnode.DefaultMetricsProvider(conf.Instrumentation),
-			logger)
+			tenderLogger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
 
 		// make sure that Tendermint is stopped gracefully when the coordinator terminates unexpectedly
 		go func() {
-			deps.Coordinator.Wait()
+			deps.DeCoo.Wait()
 			// if the daemon is stopped, the coordinator stop was expectedly
 			if CoreComponent.Daemon().IsStopped() {
 				return
