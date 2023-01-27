@@ -210,6 +210,8 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		// submit the milestone in a separate go routine to unlock the Tendermint state as soon as possible
 		ms := *c.deliverState.Milestone
 		go func() {
+			defer c.stopOnPanic()
+
 			if err := c.submitMilestoneBlock(&ms); err != nil {
 				panic(err)
 			}
