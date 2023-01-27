@@ -141,6 +141,9 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 
 		// if enough parents have been confirmed, create the milestone essence
 		if parentWeight > c.committee.F() {
+			// the callbacks are no longer relevant
+			c.inxClearBlockSolidCallbacks()
+			// create a milestone with those parents
 			c.createMilestoneEssence(parents)
 		}
 	}
@@ -220,9 +223,6 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
 		c.deliverState.Reset(state)
-
-		// the callbacks are no longer relevant
-		c.inxClearBlockSolidCallbacks()
 		// trigger an event for the new milestone index
 		c.stateMilestoneIndexSyncEvent.Trigger(state.MilestoneIndex)
 	}
@@ -392,7 +392,6 @@ func (c *Coordinator) submitMilestoneBlock(ms *iotago.Milestone) error {
 			// only report an error, if we couldn't submit, and it is not present
 			return fmt.Errorf("submitting the milestone failed: %w", err)
 		}
-		// TODO: also report this as a metric
 		c.log.Debugw("submit failed but block is already present", "milestoneIndex", ms.Index, "err", err)
 
 		return nil
