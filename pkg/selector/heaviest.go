@@ -1,5 +1,5 @@
 //nolint:gosec // we don't care about weak random numbers here
-package mselection
+package selector
 
 import (
 	"container/list"
@@ -19,8 +19,8 @@ import (
 // ErrNoTipsAvailable is returned when no tips are available in the node.
 var ErrNoTipsAvailable = errors.New("no tips available")
 
-// HeaviestSelector implements the heaviest branch selection strategy.
-type HeaviestSelector struct {
+// Heaviest implements the heaviest branch selection strategy.
+type Heaviest struct {
 	sync.Mutex
 
 	// maximum amount of tips returned by SelectTips
@@ -69,9 +69,9 @@ func (il *trackedBlocksList) removeTip(tip *trackedBlock) {
 	delete(il.blocks, tip.blockID)
 }
 
-// New creates a new HeaviestSelector instance.
-func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *HeaviestSelector {
-	s := &HeaviestSelector{
+// NewHeaviest creates a new Heaviest instance.
+func NewHeaviest(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *Heaviest {
+	s := &Heaviest{
 		maxTips:                  maxTips,
 		timeout:                  timeout,
 		reducedConfirmationLimit: reducedConfirmationLimit,
@@ -82,7 +82,7 @@ func New(maxTips int, reducedConfirmationLimit float64, timeout time.Duration) *
 }
 
 // NumTips returns the number of tips.
-func (s *HeaviestSelector) NumTips() int {
+func (s *Heaviest) NumTips() int {
 	s.Lock()
 	defer s.Unlock()
 
@@ -90,7 +90,7 @@ func (s *HeaviestSelector) NumTips() int {
 }
 
 // TrackedBlocks returns the number of tracked blocks.
-func (s *HeaviestSelector) TrackedBlocks() int {
+func (s *Heaviest) TrackedBlocks() int {
 	s.Lock()
 	defer s.Unlock()
 
@@ -98,7 +98,7 @@ func (s *HeaviestSelector) TrackedBlocks() int {
 }
 
 // Reset resets the tracked blocks map and tips list of s.
-func (s *HeaviestSelector) Reset() {
+func (s *Heaviest) Reset() {
 	s.Lock()
 	defer s.Unlock()
 
@@ -109,10 +109,10 @@ func (s *HeaviestSelector) Reset() {
 	s.tips = list.New()
 }
 
-// OnNewSolidBlock adds a new block to the HeaviestSelector, it returns the total number of blocks tracked.
+// OnNewSolidBlock adds a new block to the Heaviest, it returns the total number of blocks tracked.
 // The block must be solid and OnNewSolidBlock must be called in the order of solidification.
 // The block must also not be below max depth.
-func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
+func (s *Heaviest) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 	s.Lock()
 	defer s.Unlock()
 
@@ -132,7 +132,7 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 	}
 
 	// compute the referenced blocks
-	// each known blocks in the HeaviestSelector is represented by a unique bit in a bitset
+	// each known blocks in the Heaviest is represented by a unique bit in a bitset
 	// if a new block is added, we expand the bitset by 1 bit and store the Union of the bitsets of its parents
 	idx := uint(len(s.trackedBlocks))
 	it := &trackedBlock{blockID: blockID, refs: bitset.New(idx + 1).Set(idx)}
@@ -158,9 +158,9 @@ func (s *HeaviestSelector) OnNewSolidBlock(meta *inx.BlockMetadata) int {
 // from creating heavier branches while selection is in progress.
 // The cancellation parameters unreferencedBlocksThreshold and timeout are only considered when at least
 // minRequiredTips tips have been selected.
-func (s *HeaviestSelector) SelectTips(ctx context.Context, minRequiredTips int) (iotago.BlockIDs, error) {
+func (s *Heaviest) SelectTips(ctx context.Context, minRequiredTips int) (iotago.BlockIDs, error) {
 	if minRequiredTips < 1 {
-		panic("HeaviestSelector: at least one tip must be required")
+		panic("Heaviest: at least one tip must be required")
 	}
 
 	// create a working list with the current tips to release the lock to allow faster iteration
@@ -181,7 +181,7 @@ func (s *HeaviestSelector) SelectTips(ctx context.Context, minRequiredTips int) 
 }
 
 // selectGreedy selects the best tips greedily from tipsList.
-func (s *HeaviestSelector) selectGreedy(ctx context.Context, minRequiredTips int, tipsList *trackedBlocksList) (iotago.BlockIDs, error) {
+func (s *Heaviest) selectGreedy(ctx context.Context, minRequiredTips int, tipsList *trackedBlocksList) (iotago.BlockIDs, error) {
 	var (
 		tips           iotago.BlockIDs
 		lastTip        *trackedBlock
@@ -232,7 +232,7 @@ func (s *HeaviestSelector) selectGreedy(ctx context.Context, minRequiredTips int
 }
 
 // removeTip removes the tip item from s.
-func (s *HeaviestSelector) removeTip(it *trackedBlock) {
+func (s *Heaviest) removeTip(it *trackedBlock) {
 	if it == nil || it.tip == nil {
 		return
 	}
@@ -241,7 +241,7 @@ func (s *HeaviestSelector) removeTip(it *trackedBlock) {
 }
 
 // tipsToList returns a new list containing the current tips.
-func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
+func (s *Heaviest) tipsToList() *trackedBlocksList {
 	s.Lock()
 	defer s.Unlock()
 
@@ -259,7 +259,7 @@ func (s *HeaviestSelector) tipsToList() *trackedBlocksList {
 
 // selectTip selects a tip to be used for the next checkpoint.
 // It returns the tip referencing the most tracked blocks and the number of these blocks.
-func (s *HeaviestSelector) selectTip(tipsList *trackedBlocksList) (*trackedBlock, uint, error) {
+func (s *Heaviest) selectTip(tipsList *trackedBlocksList) (*trackedBlock, uint, error) {
 	if tipsList.Len() == 0 {
 		return nil, 0, ErrNoTipsAvailable
 	}

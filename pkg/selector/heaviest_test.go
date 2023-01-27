@@ -1,5 +1,5 @@
 //nolint:gosec // we don't care about these linters in test cases
-package mselection_test
+package selector_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
+	"github.com/iotaledger/inx-tendercoo/pkg/selector"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/tpkg"
@@ -28,8 +28,8 @@ func init() {
 	rand.Seed(0)
 }
 
-func newHPS() *mselection.HeaviestSelector {
-	return mselection.New(TestMaxTips, TestReducedConfirmationLimit, TestTimeout)
+func newHPS() *selector.Heaviest {
+	return selector.NewHeaviest(TestMaxTips, TestReducedConfirmationLimit, TestTimeout)
 }
 
 func newMetadata(parents iotago.BlockIDs) (*inx.BlockMetadata, iotago.BlockID) {
