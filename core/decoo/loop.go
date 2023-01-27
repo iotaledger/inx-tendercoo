@@ -86,6 +86,8 @@ func coordinatorLoop(ctx context.Context) {
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
 			resetRunningTimer(timer, 0)
 
+			continue
+
 		case info = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
 			// reset the timer to fire when the next milestone is due
 			resetRunningTimer(timer, remainingInterval(info.timestamp))
@@ -140,7 +142,7 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 	//nolint:gosec // we don't care about weak random numbers here
 	err = deps.Coordinator.ProposeParent(ctx, info.index+1, tips[rand.Intn(len(tips))])
 	// only log a warning when the context was not canceled
-	if err != nil && ctx.Err() != nil {
+	if err != nil && ctx.Err() == nil {
 		log.Warnf("failed to propose parent for milestone %d: %s", info.index+1, err)
 	}
 
