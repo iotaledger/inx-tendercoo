@@ -74,8 +74,8 @@ func coordinatorLoop(ctx context.Context) {
 		case <-timer.C: // propose a parent for the next milestone
 			// check that the node is synced, i.e. the latest milestone matches the confirmed milestone
 			// we cannot use deps.NodeBridge.IsNodeSynced() here, as this is always false during bootstrapping
-			if lmi, cmi := getMilestoneIndex(); lmi != cmi {
-				CoreComponent.LogWarnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
+			if lmi, cmi := deps.MilestoneIndexFunc(); lmi != cmi {
+				log.Warnf("node is not synced; latest=%d confirmed=%d; retrying in %s", lmi, cmi, SyncRetryInterval)
 				timer.Reset(SyncRetryInterval)
 
 				continue
@@ -85,6 +85,8 @@ func coordinatorLoop(ctx context.Context) {
 
 		case <-triggerNextMilestone: // reset the timer to propose a parent right away
 			resetRunningTimer(timer, 0)
+
+			continue
 
 		case info = <-confirmedMilestoneSignal: // we have received a new milestone without proposing a parent
 			// reset the timer to fire when the next milestone is due
@@ -114,8 +116,8 @@ func coordinatorLoop(ctx context.Context) {
 // proposeParent proposes a tip as the parent for the next milestone after info.
 func proposeParent(ctx context.Context, info milestoneInfo) error {
 	// if the confirmed milestone index has progressed further than the milestone index, we can cancel
-	if _, cmi := getMilestoneIndex(); cmi > info.index {
-		CoreComponent.LogInfof("no need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
+	if _, cmi := deps.MilestoneIndexFunc(); cmi > info.index {
+		log.Infof("no need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
 
 		return nil
 	}
@@ -125,14 +127,14 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 		return ctx.Err()
 	}
 
-	CoreComponent.LogInfof("proposing parent for milestone %d", info.index+1)
+	log.Infof("proposing parent for milestone %d", info.index+1)
 	tips, err := deps.Selector.SelectTips(ctx, 1)
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
 	// use the previous milestone block as fallback
 	if err != nil {
-		CoreComponent.LogWarnf("defaulting to last milestone: tip selection failed: %s", err)
+		log.Warnf("defaulting to last milestone: tip selection failed: %s", err)
 		tips = iotago.BlockIDs{info.milestoneBlockID}
 	}
 
@@ -140,8 +142,8 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 	//nolint:gosec // we don't care about weak random numbers here
 	err = deps.Coordinator.ProposeParent(ctx, info.index+1, tips[rand.Intn(len(tips))])
 	// only log a warning when the context was not canceled
-	if err != nil && ctx.Err() != nil {
-		CoreComponent.LogWarnf("failed to propose parent for milestone %d: %s", info.index+1, err)
+	if err != nil && ctx.Err() == nil {
+		log.Warnf("failed to propose parent for milestone %d: %s", info.index+1, err)
 	}
 
 	return err
@@ -159,15 +161,6 @@ func processConfirmedMilestone(milestone *iotago.Milestone) {
 	confirmedMilestone.timestamp = time.Unix(int64(milestone.Timestamp), 0)
 	confirmedMilestone.milestoneBlockID = decoo.MilestoneBlockID(milestone)
 	confirmedMilestoneSignal <- confirmedMilestone.milestoneInfo
-}
-
-func getMilestoneIndex() (uint32, uint32) {
-	// store the nodeStatus to prevent race-conditions between the two GetMilestoneIndex calls
-	nodeStatus := deps.NodeBridge.NodeStatus()
-	lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
-	cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
-
-	return lmi, cmi
 }
 
 func resetRunningTimer(timer *time.Timer, d time.Duration) {

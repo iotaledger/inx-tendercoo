@@ -23,12 +23,13 @@ import (
 
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/logger"
 	"github.com/iotaledger/hive.go/core/timeutil"
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
-	"github.com/iotaledger/inx-tendercoo/pkg/mselection"
+	"github.com/iotaledger/inx-tendercoo/pkg/selector"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/keymanager"
@@ -84,6 +85,8 @@ var (
 	CoreComponent *app.CoreComponent
 	deps          dependencies
 
+	log *logger.Logger // shortcut for CoreComponent.Logger
+
 	// config flags.
 	bootstrap             bool
 	startIndex            uint32
@@ -96,30 +99,65 @@ var (
 	onConfirmedMilestoneChanged *events.Closure
 )
 
+// Coordinator contains the methods used from a coordinator.
+type Coordinator interface {
+	Start(decoo.ABCIClient) error
+	Stop() error
+
+	ProposeParent(context.Context, uint32, iotago.BlockID) error
+}
+
+// MilestoneIndexFuc is a function returning the latest and confirmed milestone index.
+type MilestoneIndexFuc func() (uint32, uint32)
+
 type dependencies struct {
 	dig.In
-	Coordinator    *decoo.Coordinator
-	Selector       *mselection.HeaviestSelector
-	TendermintNode *tmnode.Node
-	NodeBridge     *nodebridge.NodeBridge
-	TangleListener *nodebridge.TangleListener
+	Selector           selector.TipSelector
+	NodeBridge         *nodebridge.NodeBridge
+	MilestoneIndexFunc MilestoneIndexFuc
+	TangleListener     *nodebridge.TangleListener
+	Coordinator        Coordinator
+	TendermintNode     *tmnode.Node
 }
 
 func provide(c *dig.Container) error {
+	// initialize the logger
+	log = CoreComponent.Logger()
+
+	// provide the heaviest branch selection strategy
+	if err := c.Provide(func() selector.TipSelector {
+		return selector.NewHeaviest(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
+	}); err != nil {
+		return err
+	}
+
+	// provide a function returning the latest and confirmed milestone index
+	if err := c.Provide(func(nodeBridge *nodebridge.NodeBridge) MilestoneIndexFuc {
+		return func() (uint32, uint32) {
+			nodeStatus := nodeBridge.NodeStatus()
+			lmi := nodeStatus.GetLatestMilestone().GetMilestoneInfo().GetMilestoneIndex()
+			cmi := nodeStatus.GetConfirmedMilestone().GetMilestoneInfo().GetMilestoneIndex()
+
+			return lmi, cmi
+		}
+	}); err != nil {
+		return err
+	}
+
 	// provide the node bridge tangle listener
 	if err := c.Provide(nodebridge.NewTangleListener); err != nil {
 		return err
 	}
 
-	// provide the coordinator
-	type coordinatorDeps struct {
+	// provide the decentralized coordinator
+	type deCooDeps struct {
 		dig.In
 		NodeBridge     *nodebridge.NodeBridge
 		TangleListener *nodebridge.TangleListener
 	}
-	if err := c.Provide(func(deps coordinatorDeps) (*decoo.Coordinator, error) {
-		CoreComponent.LogInfo("Providing Coordinator ...")
-		defer CoreComponent.LogInfo("Providing Coordinator ... done")
+	if err := c.Provide(func(deps deCooDeps) (*decoo.Coordinator, error) {
+		log.Info("Providing Coordinator ...")
+		defer log.Info("Providing Coordinator ... done")
 
 		// load the private key used for singing milestones
 		coordinatorPrivateKey, err := privateKeyFromEnvironment(EnvMilestonePrivateKey)
@@ -143,7 +181,7 @@ func provide(c *dig.Container) error {
 			whiteFlagTimeout,
 			&INXClient{deps.NodeBridge},
 			deps.TangleListener,
-			CoreComponent.Logger())
+			log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to provide coordinator: %w", err)
 		}
@@ -153,16 +191,21 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
+	// provide the coordinator abstraction
+	if err := c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo }); err != nil {
+		return err
+	}
+
 	// provide Tendermint
 	type tendermintDeps struct {
 		dig.In
-		Coordinator    *decoo.Coordinator
+		DeCoo          *decoo.Coordinator
 		NodeBridge     *nodebridge.NodeBridge
 		TangleListener *nodebridge.TangleListener
 	}
 	if err := c.Provide(func(deps tendermintDeps) (*tmnode.Node, error) {
-		CoreComponent.LogInfo("Providing Tendermint ...")
-		defer CoreComponent.LogInfo("Providing Tendermint ... done")
+		log.Info("Providing Tendermint ...")
+		defer log.Info("Providing Tendermint ... done")
 
 		consensusPrivateKey, err := privateKeyFromString(Parameters.Tendermint.ConsensusPrivateKey)
 		if err != nil {
@@ -181,16 +224,16 @@ func provide(c *dig.Container) error {
 
 		// initialize the coordinator matching the configured Tendermint state
 		ctx := CoreComponent.Daemon().ContextStopped()
-		if err := initCoordinator(ctx, deps.Coordinator, deps.NodeBridge, deps.TangleListener, conf); err != nil {
+		if err := initCoordinator(ctx, deps.DeCoo, deps.NodeBridge, deps.TangleListener, conf); err != nil {
 			return nil, fmt.Errorf("failed to initialize coordinator: %w", err)
 		}
 
 		// use a separate logger for Tendermint
-		log := CoreComponent.App().NewLogger("Tendermint")
 		lvl, err := zapcore.ParseLevel(Parameters.Tendermint.LogLevel)
 		if err != nil {
 			return nil, fmt.Errorf("invalid log level: %w", err)
 		}
+		tenderLogger := NewTenderLogger(CoreComponent.App().NewLogger("Tendermint"), lvl)
 
 		pval := privval.LoadFilePV(conf.PrivValidatorKeyFile(), conf.PrivValidatorStateFile())
 		nodeKey, err := p2p.LoadNodeKey(conf.NodeKeyFile())
@@ -202,37 +245,30 @@ func provide(c *dig.Container) error {
 		node, err := tmnode.NewNode(conf,
 			pval,
 			nodeKey,
-			proxy.NewLocalClientCreator(deps.Coordinator),
+			proxy.NewLocalClientCreator(deps.DeCoo),
 			func() (*tmtypes.GenesisDoc, error) { return gen, nil },
 			tmnode.DefaultDBProvider,
 			tmnode.DefaultMetricsProvider(conf.Instrumentation),
-			NewTenderLogger(log, lvl))
+			tenderLogger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to provide Tendermint: %w", err)
 		}
 
 		// make sure that Tendermint is stopped gracefully when the coordinator terminates unexpectedly
 		go func() {
-			deps.Coordinator.Wait()
+			deps.DeCoo.Wait()
 			// if the daemon is stopped, the coordinator stop was expectedly
 			if CoreComponent.Daemon().IsStopped() {
 				return
 			}
 			// otherwise stop the Tendermint node and panic
 			if err := node.Stop(); err != nil && !errors.Is(err, service.ErrAlreadyStopped) {
-				CoreComponent.LogWarnf("failed to stop Tendermint: %s", err)
+				log.Warnf("failed to stop Tendermint: %s", err)
 			}
-			CoreComponent.LogPanic("Coordinator unexpectedly stopped")
+			log.Panic("Coordinator unexpectedly stopped")
 		}()
 
 		return node, nil
-	}); err != nil {
-		return err
-	}
-
-	// provide the heaviest branch selection strategy
-	if err := c.Provide(func() *mselection.HeaviestSelector {
-		return mselection.New(Parameters.TipSel.MaxTips, Parameters.TipSel.ReducedConfirmationLimit, Parameters.TipSel.Timeout)
 	}); err != nil {
 		return err
 	}
@@ -248,7 +284,7 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 		}
 
 		if err := coordinator.Bootstrap(bootstrapForce, startIndex, startMilestoneID, startMilestoneBlockID); err != nil {
-			CoreComponent.LogWarnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
+			log.Warnf("Fail-safe prevented bootstrapping with these parameters. If you know what you are doing, "+
 				"you can additionally use the %s flag to disable any fail-safes.", strconv.Quote(CfgCoordinatorBootstrapForce))
 
 			return fmt.Errorf("bootstrap failed: %w", err)
@@ -280,7 +316,7 @@ func initCoordinator(ctx context.Context, coordinator *decoo.Coordinator, nodeBr
 		if lmi > 0 && lmi == cmi {
 			break
 		}
-		CoreComponent.LogWarnf("node is not synced; retrying in %s", SyncRetryInterval)
+		log.Warnf("node is not synced; retrying in %s", SyncRetryInterval)
 		if !timeutil.Sleep(ctx, SyncRetryInterval) {
 			return ctx.Err()
 		}
@@ -328,7 +364,7 @@ func waitUntilBlockSolid(ctx context.Context, listener *nodebridge.TangleListene
 		return err
 	}
 
-	CoreComponent.LogInfof("waiting for block %s to become solid", blockID)
+	log.Infof("waiting for block %s to become solid", blockID)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -372,7 +408,7 @@ func configure() error {
 
 		// add tips to the heaviest branch selector, if there are too many blocks, trigger a new milestone
 		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
-			CoreComponent.LogInfo("trigger next milestone preemptively")
+			log.Info("trigger next milestone preemptively")
 			select {
 			case triggerNextMilestone <- struct{}{}:
 			default:
@@ -388,11 +424,11 @@ func configure() error {
 
 		// ignore new confirmed milestones during syncing
 		if lmi := deps.NodeBridge.LatestMilestoneIndex(); lmi > milestone.Milestone.Index {
-			CoreComponent.LogDebugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)
+			log.Debugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)
 
 			return
 		}
-		CoreComponent.LogInfof("new confirmed milestone: %d", milestone.Milestone.Index)
+		log.Infof("new confirmed milestone: %d", milestone.Milestone.Index)
 		processConfirmedMilestone(milestone.Milestone)
 	})
 
@@ -401,39 +437,39 @@ func configure() error {
 
 func run() error {
 	if err := CoreComponent.Daemon().BackgroundWorker(tangleListenerWorkerName, func(ctx context.Context) {
-		CoreComponent.LogInfo("Starting " + tangleListenerWorkerName + " ... done")
+		log.Info("Starting " + tangleListenerWorkerName + " ... done")
 		deps.TangleListener.Run(ctx)
-		CoreComponent.LogInfo("Stopping " + tangleListenerWorkerName + " ... done")
+		log.Info("Stopping " + tangleListenerWorkerName + " ... done")
 	}, daemon.PriorityStopTangleListener); err != nil {
-		CoreComponent.LogPanicf("failed to start worker: %s", err)
+		log.Panicf("failed to start worker: %s", err)
 	}
 
 	if err := CoreComponent.Daemon().BackgroundWorker(tendermintWorkerName, func(ctx context.Context) {
-		CoreComponent.LogInfo("Starting " + tendermintWorkerName + " ...")
+		log.Info("Starting " + tendermintWorkerName + " ...")
 		if err := deps.TendermintNode.Start(); err != nil {
-			CoreComponent.LogPanicf("failed to start: %s", err)
+			log.Panicf("failed to start: %s", err)
 		}
 
 		addr, _ := deps.TendermintNode.NodeInfo().NetAddress()
 		pubKey, _ := deps.TendermintNode.PrivValidator().GetPubKey()
-		CoreComponent.LogInfof("Started "+tendermintWorkerName+": Address=%s, ConsensusPublicKey=%s",
+		log.Infof("Started "+tendermintWorkerName+": Address=%s, ConsensusPublicKey=%s",
 			addr, types.Byte32FromSlice(pubKey.Bytes()))
 
 		<-ctx.Done()
-		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " ...")
+		log.Info("Stopping " + tendermintWorkerName + " ...")
 		if err := deps.TendermintNode.Stop(); err != nil {
-			CoreComponent.LogWarn(err)
+			log.Warn(err)
 		}
-		CoreComponent.LogInfo("Stopping " + tendermintWorkerName + " ... done")
+		log.Info("Stopping " + tendermintWorkerName + " ... done")
 	}, daemon.PriorityStopTendermint); err != nil {
-		CoreComponent.LogPanicf("failed to start worker: %s", err)
+		log.Panicf("failed to start worker: %s", err)
 	}
 
 	if err := CoreComponent.Daemon().BackgroundWorker(decooWorkerName, func(ctx context.Context) {
-		CoreComponent.LogInfo("Starting " + decooWorkerName + " ...")
+		log.Info("Starting " + decooWorkerName + " ...")
 
 		if err := initialize(); err != nil {
-			CoreComponent.LogPanicf("failed to initialize: %s", err)
+			log.Panicf("failed to initialize: %s", err)
 		}
 
 		// it is now safe to attach the events
@@ -442,20 +478,20 @@ func run() error {
 
 		rpc := rpclocal.New(deps.TendermintNode)
 		if err := deps.Coordinator.Start(rpc); err != nil {
-			CoreComponent.LogPanicf("failed to start: %s", err)
+			log.Panicf("failed to start: %s", err)
 		}
-		CoreComponent.LogInfo("Starting " + decooWorkerName + " ... done")
+		log.Info("Starting " + decooWorkerName + " ... done")
 
 		// run the coordinator and issue milestones
 		coordinatorLoop(ctx)
 
-		CoreComponent.LogInfo("Stopping " + decooWorkerName + " ...")
+		log.Info("Stopping " + decooWorkerName + " ...")
 		if err := deps.Coordinator.Stop(); err != nil {
-			CoreComponent.LogWarn(err)
+			log.Warn(err)
 		}
-		CoreComponent.LogInfo("Stopping " + decooWorkerName + " ... done")
+		log.Info("Stopping " + decooWorkerName + " ... done")
 	}, daemon.PriorityStopCoordinator); err != nil {
-		CoreComponent.LogPanicf("failed to start worker: %s", err)
+		log.Panicf("failed to start worker: %s", err)
 	}
 
 	return nil
