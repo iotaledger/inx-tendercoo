@@ -34,7 +34,7 @@ var (
 	triggerNextMilestone chan struct{}
 )
 
-func initialize() error {
+func initializeEvents() error {
 	if bootstrap {
 		confirmedMilestone.Lock()
 		defer confirmedMilestone.Unlock()
@@ -117,7 +117,7 @@ func coordinatorLoop(ctx context.Context) {
 func proposeParent(ctx context.Context, info milestoneInfo) error {
 	// if the confirmed milestone index has progressed further than the milestone index, we can cancel
 	if _, cmi := deps.MilestoneIndexFunc(); cmi > info.index {
-		log.Infof("no need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
+		log.Infof("No need to propose parent for milestone %d: cmi=%d", info.index+1, cmi)
 
 		return nil
 	}
@@ -127,7 +127,7 @@ func proposeParent(ctx context.Context, info milestoneInfo) error {
 		return ctx.Err()
 	}
 
-	log.Infof("proposing parent for milestone %d", info.index+1)
+	log.Infof("Proposing parent for milestone %d", info.index+1)
 	tips, err := deps.Selector.SelectTips(ctx, 1)
 	if errors.Is(err, context.Canceled) {
 		return err

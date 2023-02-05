@@ -299,12 +299,14 @@ func (c *Coordinator) registerProcessParentOnSolid(blockID iotago.BlockID, index
 // If this block is a valid parent, we broadcast the corresponding Proof transaction to all Tendermint peers.
 func (c *Coordinator) processParent(index uint32, peerID PeerID, meta *inx.BlockMetadata) {
 	blockID := meta.UnwrapBlockID()
+	// if it is referenced by the correct index, the milestone has already been issued, and we can skip the proof
+	if meta.ReferencedByMilestoneIndex == index {
+		return
+	}
 	// only create proofs for valid parents
 	if !ValidParent(meta) {
 		// this should not happen for honest peers
-		c.log.Warnf("peer %s proposed an invalid parent", peerID)
-		// provide more information when debug logging is enabled
-		c.log.Debugw("invalid parent", "blockID", blockID, "metadata", meta)
+		c.log.Warnf("peer %s proposed an invalid parent: %s", peerID, blockID)
 
 		return
 	}

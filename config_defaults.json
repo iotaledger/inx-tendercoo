@@ -29,6 +29,7 @@
     "interval": "5s",
     "maxTrackedBlocks": 10000,
     "whiteFlagParentsSolidTimeout": "2s",
+    "singleNode": false,
     "tipsel": {
       "maxTips": 7,
       "reducedConfirmationLimit": 0.6,

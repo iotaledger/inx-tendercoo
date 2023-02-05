@@ -5,12 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
+
+// INXTimeout defines the timeout after which INX API calls are canceled.
+const INXTimeout = 2 * time.Second
 
 // ErrInvalidIndex is returned when the provided milestone index is invalid.
 var ErrInvalidIndex = errors.New("invalid milestone index")
@@ -96,4 +101,25 @@ func equal(a, b iotago.BlockIDs) bool {
 	}
 
 	return true
+}
+
+func inxRegisterBlockSolidEvent(ctx context.Context, blockID iotago.BlockID) (chan struct{}, error) {
+	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
+	defer cancel()
+
+	return deps.TangleListener.RegisterBlockSolidEvent(ctx, blockID)
+}
+
+func inxGetPeers(ctx context.Context) ([]*nodeclient.PeerResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
+	defer cancel()
+
+	return deps.NodeBridge.INXNodeClient().Peers(ctx)
+}
+
+func inxGetMilestone(ctx context.Context, index uint32) (*nodebridge.Milestone, error) {
+	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
+	defer cancel()
+
+	return deps.NodeBridge.Milestone(ctx, index)
 }
