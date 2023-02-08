@@ -121,13 +121,14 @@ Example:
 
 ## <a id="coordinator"></a> 4. Coordinator
 
-| Name                                  | Description                                                     | Type   | Default value |
-| ------------------------------------- | --------------------------------------------------------------- | ------ | ------------- |
-| interval                              | Target interval in which milestones are issued                  | string | "5s"          |
-| maxTrackedBlocks                      | Maximum number of blocks tracked by the milestone tip selection | int    | 10000         |
-| whiteFlagParentsSolidTimeout          | Timeout for the ComputeWhiteFlag INX call                       | string | "2s"          |
-| [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object |               |
-| [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object |               |
+| Name                                  | Description                                                     | Type    | Default value |
+| ------------------------------------- | --------------------------------------------------------------- | ------- | ------------- |
+| interval                              | Target interval in which milestones are issued                  | string  | "5s"          |
+| maxTrackedBlocks                      | Maximum number of blocks tracked by the milestone tip selection | int     | 10000         |
+| whiteFlagParentsSolidTimeout          | Timeout for the ComputeWhiteFlag INX call                       | string  | "2s"          |
+| singleNode                            | Set to true for single node test networks                       | boolean | false         |
+| [tipsel](#coordinator_tipsel)         | Configuration for tipsel                                        | object  |               |
+| [tendermint](#coordinator_tendermint) | Configuration for tendermint                                    | object  |               |
 
 ### <a id="coordinator_tipsel"></a> Tipsel
 
@@ -178,6 +179,7 @@ Example:
       "interval": "5s",
       "maxTrackedBlocks": 10000,
       "whiteFlagParentsSolidTimeout": "2s",
+      "singleNode": false,
       "tipsel": {
         "maxTips": 7,
         "reducedConfirmationLimit": 0.6,

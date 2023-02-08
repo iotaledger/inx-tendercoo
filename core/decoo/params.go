@@ -11,6 +11,7 @@ type ParametersDefinition struct {
 	Interval                     time.Duration `default:"5s" usage:"target interval in which milestones are issued"`
 	MaxTrackedBlocks             int           `default:"10000" usage:"maximum number of blocks tracked by the milestone tip selection"`
 	WhiteFlagParentsSolidTimeout time.Duration `default:"2s" usage:"timeout for the ComputeWhiteFlag INX call"`
+	SingleNode                   bool          `default:"false" usage:"set to true for single node test networks"`
 
 	TipSel struct {
 		MaxTips                  int           `default:"7" usage:"maximum number of tips returned"`
