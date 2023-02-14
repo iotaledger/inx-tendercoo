@@ -3,6 +3,7 @@ package decoo
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,9 +49,8 @@ func TestCoordinatorLoop(t *testing.T) {
 	m.On("ProposeParent", uint32(1), iotago.EmptyBlockID()).Once().Return(nil)
 	m.On("ProposeParent", uint32(2), iotago.EmptyBlockID()).Once().Return(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := runLoopWithCancel()
 	defer cancel()
-	go coordinatorLoop(ctx)
 
 	// initialize
 	confirmedMilestoneSignal <- milestoneInfo{}
@@ -69,9 +69,8 @@ func TestRetryProposeParent(t *testing.T) {
 	m.On("ProposeParent", uint32(1), iotago.EmptyBlockID()).Once().Return(errors.New("mock error"))
 	m.On("ProposeParent", uint32(1), iotago.EmptyBlockID()).Once().Return(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := runLoopWithCancel()
 	defer cancel()
-	go coordinatorLoop(ctx)
 
 	// initialize
 	confirmedMilestoneSignal <- milestoneInfo{}
@@ -94,9 +93,8 @@ func TestTriggerNextMilestone(t *testing.T) {
 	m.On("ProposeParent", uint32(1), iotago.EmptyBlockID()).Once().Return(nil)
 	m.On("ProposeParent", uint32(2), iotago.EmptyBlockID()).Once().Return(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := runLoopWithCancel()
 	defer cancel()
-	go coordinatorLoop(ctx)
 
 	// initialize
 	confirmedMilestoneSignal <- milestoneInfo{}
@@ -108,6 +106,22 @@ func TestTriggerNextMilestone(t *testing.T) {
 
 	time.Sleep(gracePeriod)
 	m.AssertExpectations(t)
+}
+
+func runLoopWithCancel() func() {
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		coordinatorLoop(ctx)
+	}()
+
+	return func() {
+		cancel()
+		wg.Wait()
+	}
 }
 
 type CoordinatorMock struct{ mock.Mock }

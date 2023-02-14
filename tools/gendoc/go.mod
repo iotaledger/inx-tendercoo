@@ -6,7 +6,7 @@ replace github.com/iotaledger/inx-tendercoo => ../../
 
 require (
 	github.com/iotaledger/hive.go/apputils v1.0.0-rc.1
-	github.com/iotaledger/hive.go/core v1.0.0-rc.2
+	github.com/iotaledger/hive.go/core v1.0.0-rc.3
 	github.com/iotaledger/inx-tendercoo v0.0.0-00010101000000-000000000000
 )
 
@@ -14,12 +14,12 @@ require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/Workiva/go-datastructures v1.0.53 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.4.0 // indirect
+	github.com/bits-and-blooms/bitset v1.5.0 // indirect
 	github.com/btcsuite/btcd v0.22.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/cockroachdb/errors v1.9.0 // indirect
+	github.com/cockroachdb/errors v1.9.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.3 // indirect
 	github.com/cosmos/gorocksdb v1.2.0 // indirect
@@ -54,7 +54,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/iotaledger/hive.go/serializer/v2 v2.0.0-rc.1 // indirect
-	github.com/iotaledger/inx-app v1.0.0-rc.2.0.20230120195000-1e7f96b98754 // indirect
+	github.com/iotaledger/inx-app v1.0.0-rc.3 // indirect
 	github.com/iotaledger/inx/go v1.0.0-rc.1 // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect
 	github.com/iotaledger/iota.go/v3 v3.0.0-rc.1 // indirect
@@ -97,14 +97,14 @@ require (
 	go.uber.org/goleak v1.2.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	golang.org/x/crypto v0.5.0 // indirect
-	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/crypto v0.6.0 // indirect
+	golang.org/x/net v0.6.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	google.golang.org/genproto v0.0.0-20230117162540-28d6b9783ac4 // indirect
-	google.golang.org/grpc v1.52.0 // indirect
+	google.golang.org/genproto v0.0.0-20230202175211-008b39050e57 // indirect
+	google.golang.org/grpc v1.52.3 // indirect
 	google.golang.org/protobuf v1.28.2-0.20220831092852-f930b1dc76e8 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
