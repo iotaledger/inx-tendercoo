@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iotaledger/hive.go/core/timeutil"
+	"github.com/iotaledger/hive.go/runtime/timeutil"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -65,7 +65,7 @@ func coordinatorLoop(ctx context.Context) {
 	timer := time.NewTimer(math.MaxInt64)
 	defer timer.Stop()
 	// propose the next parent; this automatically cancels obsolete proposes and retries on error
-	proposer := queue.NewSingle[milestoneInfo](Parameters.Interval/2, proposeParent)
+	proposer := queue.NewSingle(Parameters.Interval/2, proposeParent)
 	defer proposer.Stop()
 
 	var info milestoneInfo

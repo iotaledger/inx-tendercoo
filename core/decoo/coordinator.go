@@ -9,7 +9,7 @@ import (
 	tmconfig "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/privval"
 
-	"github.com/iotaledger/hive.go/core/timeutil"
+	"github.com/iotaledger/hive.go/runtime/timeutil"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -107,18 +107,15 @@ func initCoordinatorState(ctx context.Context, conf *tmconfig.Config) error {
 }
 
 func waitUntilBlockSolid(ctx context.Context, blockID iotago.BlockID) error {
-	solidEvent, err := inxRegisterBlockSolidEvent(ctx, blockID)
+	solidEventListener, err := inxRegisterBlockSolidEvent(ctx, blockID)
 	if err != nil {
 		return fmt.Errorf("failed to register block solid event: %w", err)
 	}
+	defer solidEventListener.Deregister()
 
 	log.Infof("waiting for block %s to become solid", blockID)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-solidEvent:
-		return nil
-	}
+
+	return solidEventListener.Wait(ctx)
 }
 
 func waitUntilConnected(ctx context.Context) error {

@@ -14,9 +14,9 @@ import (
 	rpclocal "github.com/tendermint/tendermint/rpc/client/local"
 	"go.uber.org/dig"
 
-	"github.com/iotaledger/hive.go/core/app"
-	"github.com/iotaledger/hive.go/core/events"
-	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/hive.go/lo"
+	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/daemon"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
@@ -58,21 +58,19 @@ func init() {
 	flag.Var(types.NewByte32(iotago.EmptyBlockID(), (*[32]byte)(&startMilestoneBlockID)), CfgCoordinatorStartMilestoneBlockID, "previous milestone block ID at bootstrap")
 	flag.BoolVar(&bootstrapForce, CfgCoordinatorBootstrapForce, false, "whether the network bootstrap is forced")
 
-	CoreComponent = &app.CoreComponent{
-		Component: &app.Component{
-			Name:      AppName,
-			DepsFunc:  func(cDeps dependencies) { deps = cDeps },
-			Params:    params,
-			Provide:   provide,
-			Configure: configure,
-			Run:       run,
-		},
+	Component = &app.Component{
+		Name:      AppName,
+		DepsFunc:  func(cDeps dependencies) { deps = cDeps },
+		Params:    params,
+		Provide:   provide,
+		Configure: configure,
+		Run:       run,
 	}
 }
 
 var (
-	CoreComponent *app.CoreComponent
-	deps          dependencies
+	Component *app.Component
+	deps      dependencies
 
 	log *logger.Logger // shortcut for CoreComponent.Logger
 
@@ -82,10 +80,6 @@ var (
 	startMilestoneID      iotago.MilestoneID
 	startMilestoneBlockID iotago.BlockID
 	bootstrapForce        bool
-
-	// closures.
-	onBlockSolid                *events.Closure
-	onConfirmedMilestoneChanged *events.Closure
 )
 
 // Coordinator contains the methods used from a coordinator.
@@ -111,7 +105,7 @@ type dependencies struct {
 
 func provide(c *dig.Container) error {
 	// initialize the logger
-	log = CoreComponent.Logger()
+	log = Component.Logger()
 
 	// provide the heaviest branch selection strategy
 	if err := c.Provide(func() selector.TipSelector {
@@ -192,55 +186,12 @@ func configure() error {
 	confirmedMilestoneSignal = make(chan milestoneInfo, 1)
 	triggerNextMilestone = make(chan struct{}, 1)
 
-	// for each solid block, add it to the selector and preemptively trigger the next milestone if needed
-	// This assumes that solid block events are always triggered in the correct order, and that solid block events in
-	// the past cone of a milestone are generally triggered before its milestone confirmation event.
-	// Race conditions, i.e. solid blocks that come after their confirming milestone event, are included in the selector
-	// even though they are no longer valid parents. In the very rare case, where this happens and the SelectTips is
-	// also called before the milestone's solid block event has been processed, it could cause Coordinator.ProposeParent
-	// to propose such an invalid parent, fail and be retried.
-	onBlockSolid = events.NewClosure(func(metadata *inx.BlockMetadata) {
-		// do not track more blocks than the configured limit
-		if deps.Selector.TrackedBlocks() >= Parameters.MaxTrackedBlocks {
-			return
-		}
-		// ignore blocks that are not valid parents
-		if !decoo.ValidParent(metadata) {
-			return
-		}
-
-		// add tips to the heaviest branch selector, if there are too many blocks, trigger a new milestone
-		if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
-			log.Info("Trigger next milestone preemptively")
-			select {
-			case triggerNextMilestone <- struct{}{}:
-			default:
-				// if the channel is full, there is already one unprocessed trigger, and we don't need to signal again
-			}
-		}
-	})
-
-	// for each confirmed milestone, reset the selector and signal its arrival for the coordinator loop
-	onConfirmedMilestoneChanged = events.NewClosure(func(milestone *nodebridge.Milestone) {
-		// reset the tip selection after each new milestone to only add unconfirmed blocks to the selector
-		deps.Selector.Reset()
-
-		// ignore new confirmed milestones during syncing
-		if lmi := deps.NodeBridge.LatestMilestoneIndex(); lmi > milestone.Milestone.Index {
-			log.Debugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)
-
-			return
-		}
-		log.Infof("New confirmed milestone: %d", milestone.Milestone.Index)
-		processConfirmedMilestone(milestone.Milestone)
-	})
-
 	return nil
 }
 
 func run() error {
 	// start the TangleListener for working Tangle events
-	if err := CoreComponent.Daemon().BackgroundWorker(tangleListenerWorkerName, func(ctx context.Context) {
+	if err := Component.Daemon().BackgroundWorker(tangleListenerWorkerName, func(ctx context.Context) {
 		log.Info("Starting " + tangleListenerWorkerName + " ... done")
 		deps.TangleListener.Run(ctx)
 		log.Info("Stopping " + tangleListenerWorkerName + " ... done")
@@ -249,7 +200,7 @@ func run() error {
 	}
 
 	// create and start Tendermint and run the coordinator loop to issue new milestones
-	if err := CoreComponent.Daemon().BackgroundWorker(deCooWorkerName, func(ctx context.Context) {
+	if err := Component.Daemon().BackgroundWorker(deCooWorkerName, func(ctx context.Context) {
 		log.Info("Starting " + deCooWorkerName + " ...")
 
 		conf, err := initTendermintConfig()
@@ -271,7 +222,7 @@ func run() error {
 		go func() {
 			deps.DeCoo.Wait()
 			// if the daemon is stopped, the coordinator stop was expectedly
-			if CoreComponent.Daemon().IsStopped() {
+			if Component.Daemon().IsStopped() {
 				return
 			}
 			// otherwise stop the Tendermint node and panic
@@ -284,8 +235,57 @@ func run() error {
 		if err := initializeEvents(); err != nil {
 			log.Panicf("failed to initialize: %s", err)
 		}
-		attachEvents()
-		defer detachEvents()
+
+		// for each solid block, add it to the selector and preemptively trigger the next milestone if needed
+		// This assumes that solid block events are always triggered in the correct order, and that solid block events in
+		// the past cone of a milestone are generally triggered before its milestone confirmation event.
+		// Race conditions, i.e. solid blocks that come after their confirming milestone event, are included in the selector
+		// even though they are no longer valid parents. In the very rare case, where this happens and the SelectTips is
+		// also called before the milestone's solid block event has been processed, it could cause Coordinator.ProposeParent
+		// to propose such an invalid parent, fail and be retried.
+		onBlockSolid := func(metadata *inx.BlockMetadata) {
+			// do not track more blocks than the configured limit
+			if deps.Selector.TrackedBlocks() >= Parameters.MaxTrackedBlocks {
+				return
+			}
+			// ignore blocks that are not valid parents
+			if !decoo.ValidParent(metadata) {
+				return
+			}
+
+			// add tips to the heaviest branch selector, if there are too many blocks, trigger a new milestone
+			if trackedBlocksCount := deps.Selector.OnNewSolidBlock(metadata); trackedBlocksCount >= Parameters.MaxTrackedBlocks {
+				log.Info("Trigger next milestone preemptively")
+				select {
+				case triggerNextMilestone <- struct{}{}:
+				default:
+					// if the channel is full, there is already one unprocessed trigger, and we don't need to signal again
+				}
+			}
+		}
+
+		// for each confirmed milestone, reset the selector and signal its arrival for the coordinator loop
+		onConfirmedMilestoneChanged := func(milestone *nodebridge.Milestone) {
+			// reset the tip selection after each new milestone to only add unconfirmed blocks to the selector
+			deps.Selector.Reset()
+
+			// ignore new confirmed milestones during syncing
+			if lmi := deps.NodeBridge.LatestMilestoneIndex(); lmi > milestone.Milestone.Index {
+				log.Debugf("node is not synced; latest=%d confirmed=%d", lmi, milestone.Milestone.Index)
+
+				return
+			}
+			log.Infof("New confirmed milestone: %d", milestone.Milestone.Index)
+			processConfirmedMilestone(milestone.Milestone)
+		}
+
+		// register events
+		unhook := lo.Batch(
+			deps.TangleListener.Events.BlockSolid.Hook(onBlockSolid).Unhook,
+			deps.NodeBridge.Events.ConfirmedMilestoneChanged.Hook(onConfirmedMilestoneChanged).Unhook,
+		)
+
+		defer unhook()
 
 		if err := deps.DeCoo.Start(rpclocal.New(node)); err != nil {
 			log.Panicf("failed to start coordinator: %s", err)
@@ -318,16 +318,6 @@ func run() error {
 	}
 
 	return nil
-}
-
-func attachEvents() {
-	deps.TangleListener.Events.BlockSolid.Hook(onBlockSolid)
-	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Hook(onConfirmedMilestoneChanged)
-}
-
-func detachEvents() {
-	deps.TangleListener.Events.BlockSolid.Detach(onBlockSolid)
-	deps.NodeBridge.Events.ConfirmedMilestoneChanged.Detach(onConfirmedMilestoneChanged)
 }
 
 // privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.

@@ -16,7 +16,7 @@ import (
 	tmcore "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 
-	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/hive.go/serializer/v2"
 	inxutils "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"

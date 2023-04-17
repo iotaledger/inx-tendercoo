@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	mathrand "math/rand"
 
-	"github.com/iotaledger/hive.go/core/app"
-	"github.com/iotaledger/hive.go/core/app/core/shutdown"
-	"github.com/iotaledger/hive.go/core/app/plugins/profiling"
+	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/hive.go/app/components/profiling"
+	"github.com/iotaledger/hive.go/app/components/shutdown"
 	"github.com/iotaledger/inx-app/core/inx"
 	"github.com/iotaledger/inx-tendercoo/core/decoo"
 )
@@ -47,13 +47,11 @@ var initComponent = &app.InitComponent{
 func App() *app.App {
 	return app.New(Name, Version,
 		app.WithInitComponent(initComponent),
-		app.WithCoreComponents([]*app.CoreComponent{
-			inx.CoreComponent,
-			decoo.CoreComponent,
-			shutdown.CoreComponent,
-		}...),
-		app.WithPlugins([]*app.Plugin{
-			profiling.Plugin,
-		}...),
+		app.WithComponents(
+			inx.Component,
+			decoo.Component,
+			shutdown.Component,
+			profiling.Component,
+		),
 	)
 }

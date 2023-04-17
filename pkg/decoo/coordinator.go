@@ -13,8 +13,8 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	"go.uber.org/atomic"
 
-	"github.com/iotaledger/hive.go/core/events"
-	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/runtime/valuenotifier"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/queue"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -82,11 +82,11 @@ type Coordinator struct {
 	log       *logger.Logger
 
 	//nolint:containedctx // false positive
-	ctx                          context.Context
-	cancel                       context.CancelFunc
-	protoParamsFunc              ProtocolParametersFunc
-	stateMilestoneIndexSyncEvent *events.SyncEvent
-	broadcastQueue               *queue.KeyedQueue
+	ctx                             context.Context
+	cancel                          context.CancelFunc
+	protoParamsFunc                 ProtocolParametersFunc
+	stateMilestoneIndexSyncNotifier *valuenotifier.Notifier[iotago.MilestoneIndex]
+	broadcastQueue                  *queue.KeyedQueue
 
 	// the coordinator ABCI application state controlled by the Tendermint blockchain
 	checkState   AppState
@@ -112,16 +112,16 @@ func New(committee *Committee, maxRetainBlocks uint, whiteFlagTimeout time.Durat
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Coordinator{
-		committee:                    committee,
-		maxRetainBlocks:              maxRetainBlocks,
-		whiteFlagTimeout:             whiteFlagTimeout,
-		inxClient:                    inxClient,
-		listener:                     listener,
-		log:                          log,
-		ctx:                          ctx,
-		cancel:                       cancel,
-		protoParamsFunc:              inxClient.ProtocolParameters,
-		stateMilestoneIndexSyncEvent: events.NewSyncEvent(),
+		committee:                       committee,
+		maxRetainBlocks:                 maxRetainBlocks,
+		whiteFlagTimeout:                whiteFlagTimeout,
+		inxClient:                       inxClient,
+		listener:                        listener,
+		log:                             log,
+		ctx:                             ctx,
+		cancel:                          cancel,
+		protoParamsFunc:                 inxClient.ProtocolParameters,
+		stateMilestoneIndexSyncNotifier: valuenotifier.New[iotago.MilestoneIndex](),
 	}
 
 	//nolint:forcetypeassert // we only submit []byte into the queue
@@ -220,7 +220,10 @@ func (c *Coordinator) ProposeParent(ctx context.Context, index uint32, blockID i
 	}
 
 	// wait until the state matches the proposal index
-	if err := events.WaitForChannelClosed(ctx, c.registerStateMilestoneIndexEvent(index)); err != nil {
+	stateMilestoneIndexEventListener := c.registerStateMilestoneIndexEvent(index)
+	defer stateMilestoneIndexEventListener.Deregister()
+
+	if err := stateMilestoneIndexEventListener.Wait(ctx); err != nil {
 		return fmt.Errorf("failed to wait for milestone index %d: %w", index, err)
 	}
 
@@ -278,14 +281,14 @@ func (c *Coordinator) initState(height int64, state *State) {
 	c.cms.info = CommitInfo{Height: height, Hash: c.deliverState.Hash()}
 }
 
-func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) chan struct{} {
+func (c *Coordinator) registerStateMilestoneIndexEvent(index uint32) *valuenotifier.Listener {
 	// as the trigger is called inside a checkState lock, the register and the index don't need to be in the same lock
-	ch := c.stateMilestoneIndexSyncEvent.RegisterEvent(index)
+	stateMilestoneIndexEventListener := c.stateMilestoneIndexSyncNotifier.Listener(index)
 	if index <= c.MilestoneIndex() {
-		c.stateMilestoneIndexSyncEvent.Trigger(index)
+		c.stateMilestoneIndexSyncNotifier.Notify(index)
 	}
 
-	return ch
+	return stateMilestoneIndexEventListener
 }
 
 func (c *Coordinator) broadcastTx(ctx context.Context, tx []byte) error {
