@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo/types"
 )
 
@@ -198,7 +198,7 @@ func newTendermintNode(conf *tmconfig.Config) (*tmnode.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid log level: %w", err)
 	}
-	tenderLogger := NewTenderLogger(CoreComponent.App().NewLogger("Tendermint"), lvl)
+	tenderLogger := NewTenderLogger(Component.App().NewLogger("Tendermint"), lvl)
 
 	// start Tendermint, this replays blocks until Tendermint and Coordinator are synced
 	node, err := tmnode.NewNode(conf,

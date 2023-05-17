@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/hive.go/runtime/valuenotifier"
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
 	"github.com/iotaledger/inx-tendercoo/pkg/decoo"
 	inx "github.com/iotaledger/inx/go"
@@ -103,7 +104,7 @@ func equal(a, b iotago.BlockIDs) bool {
 	return true
 }
 
-func inxRegisterBlockSolidEvent(ctx context.Context, blockID iotago.BlockID) (chan struct{}, error) {
+func inxRegisterBlockSolidEvent(ctx context.Context, blockID iotago.BlockID) (*valuenotifier.Listener, error) {
 	ctx, cancel := context.WithTimeout(ctx, INXTimeout)
 	defer cancel()
 

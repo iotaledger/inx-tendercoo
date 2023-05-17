@@ -226,7 +226,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 		}
 		c.deliverState.Reset(state)
 		// trigger an event for the new milestone index
-		c.stateMilestoneIndexSyncEvent.Trigger(state.MilestoneIndex)
+		c.stateMilestoneIndexSyncNotifier.Notify(state.MilestoneIndex)
 	}
 
 	// make a deep copy of the state
