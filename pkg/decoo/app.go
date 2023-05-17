@@ -174,7 +174,7 @@ func (c *Coordinator) EndBlock(abcitypes.RequestEndBlock) abcitypes.ResponseEndB
 }
 
 func (c *Coordinator) dumpState(label string, a *AppState) {
-	c.log.Debugw("Commit-"+label, "stateHash", iotago.EncodeHex(a.Hash()), "state", a)
+	c.log.Debugw("Commit"+label, "stateHash", iotago.EncodeHex(a.Hash()), "state", a)
 }
 
 // Commit signals the application to persist the application state.
@@ -228,7 +228,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 			LastMilestoneID:      c.deliverState.Milestone.MustID(),
 			LastMilestoneBlockID: MilestoneBlockID(c.deliverState.Milestone),
 		}
-		c.dumpState("beforereset", &c.deliverState)
+		c.dumpState("Reset", &c.deliverState)
 		c.deliverState.Reset(state)
 		// trigger an event for the new milestone index
 		c.stateMilestoneIndexSyncNotifier.Notify(state.MilestoneIndex)
@@ -238,7 +238,7 @@ func (c *Coordinator) Commit() abcitypes.ResponseCommit {
 	c.checkState.Copy(&c.deliverState)
 	// update the last commit info
 	c.cms.Commit(&c.deliverState)
-	c.dumpState("aftercommit", &c.deliverState)
+	c.dumpState("After", &c.deliverState)
 
 	return abcitypes.ResponseCommit{
 		Data:         c.cms.LastCommitInfo().Hash,
