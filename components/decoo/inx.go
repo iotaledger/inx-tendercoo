@@ -49,13 +49,17 @@ func (c *INXClient) LatestMilestone() (*iotago.Milestone, error) {
 // The caller needs to make sure that parents are all solid.
 func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestamp uint32, parents iotago.BlockIDs, previousMilestoneID iotago.MilestoneID) ([]byte, []byte, error) {
 	cmi := c.ConfirmedMilestoneIndex()
+	log.Debugw("WhiteFlag-Start", "cmi", cmi, "index", index, "timestamp", timestamp, "parents", parents, "previousMilestoneId", previousMilestoneID)
 	if index > cmi+1 {
+		log.Warn("WhiteFlag-Err-1")
 		return nil, nil, ErrInvalidIndex
 	}
 
 	// for a past milestone we don't need to compute anything and can query the existing information
 	if cmi > 0 && index <= cmi {
-		return c.queryWhiteFlag(ctx, index, parents)
+		inclusionMerkleRoot, appliedMerkleRoot, err := c.queryWhiteFlag(ctx, index, parents)
+		log.Debugw("WhiteFlag-Query-1", "inclusionMerkleRoot", iotago.EncodeHex(inclusionMerkleRoot), "appliedMerkleRoot", iotago.EncodeHex(appliedMerkleRoot), "err", err)
+		return inclusionMerkleRoot, appliedMerkleRoot, err
 	}
 
 	req := &inx.WhiteFlagRequest{
@@ -64,17 +68,21 @@ func (c *INXClient) ComputeWhiteFlag(ctx context.Context, index uint32, timestam
 		Parents:             inx.NewBlockIds(parents),
 		PreviousMilestoneId: inx.NewMilestoneId(previousMilestoneID),
 	}
+	log.Debugw("WhiteFlag-Compute", "index", index, "timestamp", timestamp, "parents", parents, "previousMilestoneId", previousMilestoneID)
 	res, err := c.Client().ComputeWhiteFlag(ctx, req)
 	if err != nil {
+		log.Warnw("WhiteFlag-Err-2", "err", err)
 		// there could be a race condition, where ComputeWhiteFlag fails as the cmi got updated in the meantime
 		// in this case, we check for that particular error message and query
 		if strings.Contains(err.Error(), errTextComputeWhiteFlagInvalidIndex) {
-			return c.queryWhiteFlag(ctx, index, parents)
+			inclusionMerkleRoot, appliedMerkleRoot, err := c.queryWhiteFlag(ctx, index, parents)
+			log.Debugw("WhiteFlag-Query-2", "inclusionMerkleRoot", iotago.EncodeHex(inclusionMerkleRoot), "appliedMerkleRoot", iotago.EncodeHex(appliedMerkleRoot), "err", err)
+			return inclusionMerkleRoot, appliedMerkleRoot, err
 		}
-
+		log.Warn("WhiteFlag-Err-3")
 		return nil, nil, fmt.Errorf("failed to query ComputeWhiteFlag: %w", err)
 	}
-
+	log.Debugw("WhiteFlag-Return", "inclusionMerkleRoot", iotago.EncodeHex(res.GetMilestoneInclusionMerkleRoot()), "appliedMerkleRoot", iotago.EncodeHex(res.GetMilestoneAppliedMerkleRoot()), "err", err)
 	return res.GetMilestoneInclusionMerkleRoot(), res.GetMilestoneAppliedMerkleRoot(), nil
 }
 
