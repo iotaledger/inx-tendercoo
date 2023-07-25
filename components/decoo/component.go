@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -320,11 +322,39 @@ func run() error {
 	return nil
 }
 
+func privateKeyFromFile(filename string) (string, error) {
+	// read file
+	fileContent, err := os.ReadFile(filename)
+	if err != nil {
+		return "", nil
+	}
+
+	// Match a 64-character hexadecimal string
+	re := regexp.MustCompile(`[0-9a-fA-F]{64}`)
+	matches := re.FindString(string(fileContent))
+
+	// if nothing found, return error
+	if matches == "" {
+		return "", fmt.Errorf("the file specified in environment variable %s does not contain a valid key", strconv.Quote(filename))
+	}
+
+	// return the key
+	return matches, nil
+}
+
 // privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
 func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	value, exists := os.LookupEnv(name)
 	if !exists {
 		return nil, fmt.Errorf("environment variable %s not set", strconv.Quote(name))
+	}
+
+	if strings.HasPrefix(value, "file://") {
+		var err error
+		value, err = privateKeyFromFile(strings.TrimPrefix(value, "file://"))
+		if err != nil {
+			return nil, err
+		}
 	}
 	key, err := privateKeyFromString(value)
 	if err != nil {
