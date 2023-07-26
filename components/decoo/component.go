@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/hive.go/crypto/pem"
 	"github.com/iotaledger/hive.go/lo"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
@@ -326,20 +326,8 @@ func privateKeyFromStringOrFile(value string) (ed25519.PrivateKey, error) {
 		// strip prefix
 		filename := strings.TrimPrefix(value, "file://")
 
-		// read file
-		fileContent, err := os.ReadFile(filename)
-		if err != nil {
-			return nil, err
-		}
-
-		// Match a 64-character hexadecimal string
-		re := regexp.MustCompile(`[0-9a-fA-F]{64}`)
-		value = re.FindString(string(fileContent))
-
-		// if nothing found, return error
-		if value == "" {
-			return nil, fmt.Errorf("the file %s does not contain a valid key", strconv.Quote(filename))
-		}
+		// read from pem file
+		return pem.ReadEd25519PrivateKeyFromPEMFile(filename)
 	}
 
 	return privateKeyFromString(value)
