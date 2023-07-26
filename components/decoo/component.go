@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -175,11 +177,7 @@ func provide(c *dig.Container) error {
 	}
 
 	// provide the coordinator abstraction
-	if err := c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo }); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo })
 }
 
 func configure() error {
@@ -320,13 +318,40 @@ func run() error {
 	return nil
 }
 
+// privateKeyFromStringOrFile returns an ed25519 private key
+// if the value string has file:// as prefix the key is retrieved from file.
+func privateKeyFromStringOrFile(value string) (ed25519.PrivateKey, error) {
+	// if value has file:// prefix, return hex key from file
+	if strings.HasPrefix(value, "file://") {
+		// strip prefix
+		filename := strings.TrimPrefix(value, "file://")
+
+		// read file
+		fileContent, err := os.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		// Match a 64-character hexadecimal string
+		re := regexp.MustCompile(`[0-9a-fA-F]{64}`)
+		value = re.FindString(string(fileContent))
+
+		// if nothing found, return error
+		if value == "" {
+			return nil, fmt.Errorf("the file %s does not contain a valid key", strconv.Quote(filename))
+		}
+	}
+
+	return privateKeyFromString(value)
+}
+
 // privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
 func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	value, exists := os.LookupEnv(name)
 	if !exists {
 		return nil, fmt.Errorf("environment variable %s not set", strconv.Quote(name))
 	}
-	key, err := privateKeyFromString(value)
+	key, err := privateKeyFromStringOrFile(value)
 	if err != nil {
 		return nil, fmt.Errorf("environment variable %s contains an invalid private key: %w", strconv.Quote(name), err)
 	}

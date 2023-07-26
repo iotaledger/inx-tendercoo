@@ -227,7 +227,7 @@ func (m *INXMock) ComputeWhiteFlag(ctx context.Context, index uint32, _ uint32, 
 	return make([]byte, iotago.MilestoneMerkleProofLength), make([]byte, iotago.MilestoneMerkleProofLength), nil
 }
 
-func (m *INXMock) RegisterBlockSolidCallback(ctx context.Context, id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
+func (m *INXMock) RegisterBlockSolidCallback(_ context.Context, id iotago.BlockID, f func(*inxutils.BlockMetadata)) error {
 	m.Lock()
 	defer m.Unlock()
 	if _, ok := m.solidBlocks[id]; ok {
