@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -15,6 +16,7 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/hive.go/crypto/pem"
 	"github.com/iotaledger/hive.go/lo"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/inx-app/pkg/nodebridge"
@@ -175,11 +177,7 @@ func provide(c *dig.Container) error {
 	}
 
 	// provide the coordinator abstraction
-	if err := c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo }); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Provide(func(deCoo *decoo.Coordinator) Coordinator { return deCoo })
 }
 
 func configure() error {
@@ -320,13 +318,28 @@ func run() error {
 	return nil
 }
 
+// privateKeyFromStringOrFile returns an ed25519 private key
+// if the value string has file:// as prefix the key is retrieved from file.
+func privateKeyFromStringOrFile(value string) (ed25519.PrivateKey, error) {
+	// if value has file:// prefix, return hex key from file
+	if strings.HasPrefix(value, "file://") {
+		// strip prefix
+		filename := strings.TrimPrefix(value, "file://")
+
+		// read from pem file
+		return pem.ReadEd25519PrivateKeyFromPEMFile(filename)
+	}
+
+	return privateKeyFromString(value)
+}
+
 // privateKeyFromEnvironment loads ed25519 private keys from the given environment variable.
 func privateKeyFromEnvironment(name string) (ed25519.PrivateKey, error) {
 	value, exists := os.LookupEnv(name)
 	if !exists {
 		return nil, fmt.Errorf("environment variable %s not set", strconv.Quote(name))
 	}
-	key, err := privateKeyFromString(value)
+	key, err := privateKeyFromStringOrFile(value)
 	if err != nil {
 		return nil, fmt.Errorf("environment variable %s contains an invalid private key: %w", strconv.Quote(name), err)
 	}

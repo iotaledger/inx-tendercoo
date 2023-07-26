@@ -67,6 +67,7 @@ require (
 	github.com/holiman/uint256 v1.2.2 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/iotaledger/hive.go/constraints v0.0.0-20230417125513-e2e89991217f // indirect
+	github.com/iotaledger/hive.go/crypto v0.0.0-20230629181801-64c530ff9d15 // indirect
 	github.com/iotaledger/hive.go/ds v0.0.0-20230417125513-e2e89991217f // indirect
 	github.com/iotaledger/hive.go/stringify v0.0.0-20230417125513-e2e89991217f // indirect
 	github.com/iotaledger/iota.go v1.0.0 // indirect

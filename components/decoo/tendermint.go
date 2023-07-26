@@ -59,7 +59,7 @@ func NewTenderLogger(log *logger.Logger, l zapcore.Level) TenderLogger {
 }
 
 func initTendermintConfig() (*tmconfig.Config, error) {
-	consensusPrivateKey, err := privateKeyFromString(Parameters.Tendermint.ConsensusPrivateKey)
+	consensusPrivateKey, err := privateKeyFromStringOrFile(Parameters.Tendermint.ConsensusPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load consensus private key: %w", err)
 	}
@@ -105,7 +105,7 @@ func initTendermintConfig() (*tmconfig.Config, error) {
 
 		log.Infow("Found node key", "path", nodeKeyFile)
 	} else {
-		nodePrivateKey, err := privateKeyFromString(Parameters.Tendermint.NodePrivateKey)
+		nodePrivateKey, err := privateKeyFromStringOrFile(Parameters.Tendermint.NodePrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load node private key: %w", err)
 		}

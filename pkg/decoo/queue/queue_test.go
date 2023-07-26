@@ -231,7 +231,7 @@ func TestCancelRunning(t *testing.T) {
 	require.EqualValues(t, 1, counter)
 }
 
-func TestConcurrentSubmit(t *testing.T) {
+func TestConcurrentSubmit(_ *testing.T) {
 	const numThreads = 10
 	const capacity = 10
 	q := queue.New(retryInterval, func(context.Context, any) error { return errTest })

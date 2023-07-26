@@ -26,6 +26,8 @@ func init() {
 	if _, err := cryptorand.Read(b[:]); err != nil {
 		panic("cannot seed math/rand package with cryptographically secure random number generator")
 	}
+
+	//nolint: staticcheck, (mathrand.Seed is deprecated)
 	mathrand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
 }
 

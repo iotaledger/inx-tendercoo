@@ -25,6 +25,7 @@ const (
 )
 
 func init() {
+	//nolint: staticcheck, (mathrand.Seed is deprecated)
 	rand.Seed(0)
 }
 
