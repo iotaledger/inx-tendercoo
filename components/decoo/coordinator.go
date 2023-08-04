@@ -113,7 +113,7 @@ func waitUntilBlockSolid(ctx context.Context, blockID iotago.BlockID) error {
 	}
 	defer solidEventListener.Deregister()
 
-	log.Infof("waiting for block %s to become solid", blockID)
+	log.Infof("waiting for block %s to become solid", iotago.EncodeHex(blockID[:]))
 
 	return solidEventListener.Wait(ctx)
 }
