@@ -152,6 +152,12 @@ func initTendermintConfig() (*tmconfig.Config, error) {
 	// Disable Peer Exchange Reactor
 	conf.P2P.PexReactor = false
 
+	// Disable indexer (because it never gets pruned)
+	// doc: `If you do not need to query transactions from the specific node, you can disable indexing.`
+	conf.TxIndex = &tmconfig.TxIndexConfig{
+		Indexer: "null",
+	}
+
 	// Prometheus configuration
 	conf.Instrumentation.Prometheus = Parameters.Tendermint.Prometheus.Enabled
 	conf.Instrumentation.PrometheusListenAddr = Parameters.Tendermint.Prometheus.BindAddress
