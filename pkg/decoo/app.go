@@ -306,7 +306,7 @@ func (c *Coordinator) processParent(index uint32, peerID PeerID, meta *inx.Block
 	// only create proofs for valid parents
 	if !ValidParent(meta) {
 		// this should not happen for honest peers
-		c.log.Warnf("peer %s proposed an invalid parent: %s", peerID, blockID)
+		c.log.Warnf("peer %s proposed an invalid parent: %s", peerID, blockID.ToHex())
 
 		return
 	}

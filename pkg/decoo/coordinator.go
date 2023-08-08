@@ -260,10 +260,10 @@ func (c *Coordinator) validateLatest(index uint32, milestoneID iotago.MilestoneI
 			return fmt.Errorf("latest milestone %d is incompatible: Index: expected=%d actual=%d", latest.Index, index-1, latest.Index)
 		}
 		if id := latest.MustID(); id != milestoneID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID: expected=%s actual=%s", latest.Index, milestoneID, id)
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneID: expected=%s actual=%s", latest.Index, milestoneID.ToHex(), id.ToHex())
 		}
 		if id := MilestoneBlockID(latest); id != milestoneBlockID {
-			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID: expected=%s actual=%s", latest.Index, milestoneBlockID, id)
+			return fmt.Errorf("latest milestone %d is incompatible: MilestoneBlockID: expected=%s actual=%s", latest.Index, milestoneBlockID.ToHex(), id.ToHex())
 		}
 	}
 
