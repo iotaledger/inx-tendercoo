@@ -17,7 +17,7 @@ var (
 	Name = "inx-tendercoo"
 
 	// Version of the app.
-	Version = "0.0.5"
+	Version = "1.0.0-rc.1"
 )
 
 func init() {
