@@ -1,6 +1,6 @@
 module github.com/iotaledger/inx-tendercoo/tools/gendoc
 
-go 1.20
+go 1.21
 
 replace github.com/iotaledger/inx-tendercoo => ../../
 
@@ -30,7 +30,7 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.4.3 // indirect
-	github.com/ethereum/go-ethereum v1.12.0 // indirect
+	github.com/ethereum/go-ethereum v1.12.2 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fbiville/markdown-table-formatter v0.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
